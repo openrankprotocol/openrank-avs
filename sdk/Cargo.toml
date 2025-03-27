@@ -1,0 +1,8 @@
+[package]
+name = "openrank-sdk"
+description = "SDK for OpenRank AVS"
+rust-version.workspace = true
+license.workspace = true
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
