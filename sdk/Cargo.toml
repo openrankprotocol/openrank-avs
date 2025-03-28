@@ -6,3 +6,10 @@ license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+
+[dependencies]
+clap = { workspace = true, features = ["derive"] }
+aws-sdk-s3 = { workspace = true }
+aws-config = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+dotenv = { workspace = true }
