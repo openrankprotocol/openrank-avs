@@ -36,8 +36,8 @@ contract OpenRankManager {
 
     uint256 constant CHALLENGE_WINDOW = 60;
     uint256 constant RXP_WINDOW = 60;
-    uint256 constant FEE = 100;
-    uint256 constant STAKE = 100;
+    uint256 public constant FEE = 100;
+    uint256 public constant STAKE = 100;
 
     uint256 public idCounter;
     mapping(address => bool) whitelistedComputers;

@@ -1,8 +1,11 @@
 mod sol;
 
+use alloy::hex::FromHex;
 use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::ProviderBuilder;
 use alloy::rpc::client::RpcClient;
+use alloy::signers::local::coins_bip39::English;
+use alloy::signers::local::MnemonicBuilder;
 use alloy::transports::http::reqwest::Url;
 use aws_config::from_env;
 use aws_sdk_s3::primitives::ByteStream;
@@ -41,8 +44,16 @@ async fn main() -> Result<(), AwsError> {
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
+    let mnemonic = std::env::var("MNEMONIC").expect("MNEMONIC must be set.");
     let config = from_env().region("us-west-2").load().await;
     let client = Client::new(&config);
+
+    let wallet = MnemonicBuilder::<English>::default()
+        .phrase(mnemonic)
+        .index(0)
+        .unwrap()
+        .build()
+        .unwrap();
 
     match cli.method {
         Method::UploadTrust { path } => {
@@ -130,19 +141,24 @@ async fn main() -> Result<(), AwsError> {
         }
         Method::RequestCompute { trust_id, seed_id } => {
             let provider = ProviderBuilder::new()
+                .wallet(wallet)
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
 
-            let mut address_bytes = [0u8; 20];
-            address_bytes.copy_from_slice(&hex::decode(manager_address).unwrap());
-            let contract = OpenRankManager::new(Address::new(address_bytes), provider);
+            let contract =
+                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
 
-            let trust_id_bytes = FixedBytes::from_slice(hex::decode(trust_id).unwrap().as_slice());
-            let seed_id_bytes = FixedBytes::from_slice(hex::decode(seed_id).unwrap().as_slice());
+            let trust_id_bytes = FixedBytes::from_hex(trust_id).unwrap();
+            let seed_id_bytes = FixedBytes::from_hex(seed_id).unwrap();
+
+            let required_fee = contract.FEE().call().await.unwrap();
+            println!("{:?}", required_fee._0);
             let res = contract
                 .submitComputeRequest(trust_id_bytes, seed_id_bytes)
-                .call()
-                .await;
-            println!("Compute ID: {}", res.unwrap().computeId);
+                .value(required_fee._0)
+                .send()
+                .await
+                .unwrap();
+            println!("Tx Hash: {}", res.watch().await.unwrap());
         }
     };
 

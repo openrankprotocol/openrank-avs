@@ -10,7 +10,7 @@ edition.workspace = true
 [dependencies]
 openrank-common = { workspace = true }
 
-alloy = { workspace = true }
+alloy = { workspace = true, features = ["signer-mnemonic"] }
 alloy-rlp = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 aws-sdk-s3 = { workspace = true }
