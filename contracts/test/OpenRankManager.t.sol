@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.13;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {OpenRankManager} from "../src/OpenRankManager.sol";
@@ -37,11 +37,18 @@ contract OpenRankManagerTest is Test {
 
     function testCorrectCompute() public {
         vm.startPrank(users[0]);
-        uint256 jobId = opManager.submitComputeRequest{value: FEE}(bytes32(0), bytes32(0));
+        uint256 jobId = opManager.submitComputeRequest{value: FEE}(
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         vm.startPrank(computers[0]);
-        opManager.submitComputeResult{value: STAKE}(jobId, bytes32(0), bytes32(0));
+        opManager.submitComputeResult{value: STAKE}(
+            jobId,
+            bytes32(0),
+            bytes32(0)
+        );
 
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeJob(jobId);
@@ -51,11 +58,18 @@ contract OpenRankManagerTest is Test {
 
     function testChallenge() public {
         vm.startPrank(users[0]);
-        uint256 jobId = opManager.submitComputeRequest{value: FEE}(bytes32(0), bytes32(0));
+        uint256 jobId = opManager.submitComputeRequest{value: FEE}(
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         vm.startPrank(computers[0]);
-        opManager.submitComputeResult{value: STAKE}(jobId, bytes32(0), bytes32(0));
+        opManager.submitComputeResult{value: STAKE}(
+            jobId,
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         uint256 balanceBefore = challengers[0].balance;
@@ -70,11 +84,18 @@ contract OpenRankManagerTest is Test {
 
     function testChallengeAfterFinalizedJob() public {
         vm.startPrank(users[0]);
-        uint256 jobId = opManager.submitComputeRequest{value: FEE}(bytes32(0), bytes32(0));
+        uint256 jobId = opManager.submitComputeRequest{value: FEE}(
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         vm.startPrank(computers[0]);
-        opManager.submitComputeResult{value: STAKE}(jobId, bytes32(0), bytes32(0));
+        opManager.submitComputeResult{value: STAKE}(
+            jobId,
+            bytes32(0),
+            bytes32(0)
+        );
 
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeJob(jobId);
@@ -90,11 +111,18 @@ contract OpenRankManagerTest is Test {
 
     function testFinalizeJobAfterChallenge() public {
         vm.startPrank(users[0]);
-        uint256 jobId = opManager.submitComputeRequest{value: FEE}(bytes32(0), bytes32(0));
+        uint256 jobId = opManager.submitComputeRequest{value: FEE}(
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         vm.startPrank(computers[0]);
-        opManager.submitComputeResult{value: STAKE}(jobId, bytes32(0), bytes32(0));
+        opManager.submitComputeResult{value: STAKE}(
+            jobId,
+            bytes32(0),
+            bytes32(0)
+        );
         vm.stopPrank();
 
         uint256 balanceBefore = challengers[0].balance;
