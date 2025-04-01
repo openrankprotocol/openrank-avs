@@ -3335,6 +3335,22 @@ dependencies = [
 [[package]]
 name = "openrank-node"
 version = "0.0.1"
+dependencies = [
+ "alloy",
+ "alloy-rlp",
+ "aws-config",
+ "aws-credential-types",
+ "aws-sdk-s3",
+ "base64 0.22.1",
+ "clap",
+ "csv",
+ "dotenv",
+ "futures-util",
+ "hex",
+ "openrank-common",
+ "sha3",
+ "tokio",
+]
 
 [[package]]
 name = "openrank-sdk"

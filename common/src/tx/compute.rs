@@ -44,6 +44,10 @@ impl Scores {
     pub fn new(entries: Vec<ScoreEntry>) -> Self {
         Self { entries }
     }
+
+    pub fn inner(self) -> Vec<ScoreEntry> {
+        self.entries
+    }
 }
 
 #[derive(
