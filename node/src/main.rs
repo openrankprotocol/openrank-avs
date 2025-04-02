@@ -1,3 +1,4 @@
+mod challenger;
 mod computer;
 mod sol;
 
@@ -51,6 +52,7 @@ async fn main() {
     );
 
     if cli.challenger {
+        challenger::run(contract, provider, client, bucket_name).await;
     } else {
         computer::run(contract, provider, client, bucket_name).await;
     }

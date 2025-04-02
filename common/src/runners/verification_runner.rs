@@ -19,10 +19,9 @@ use super::{BaseRunner, Error as BaseError};
 /// Struct containing the state of the verification runner
 pub struct VerificationRunner {
     base: BaseRunner,
-    compute_scores: HashMap<DomainHash, HashMap<Hash, compute::Scores>>,
+    compute_scores: HashMap<DomainHash, HashMap<Hash, Vec<ScoreEntry>>>,
     compute_tree: HashMap<DomainHash, HashMap<Hash, DenseMerkleTree<Keccak256>>>,
-    active_assignments: HashMap<DomainHash, Vec<Hash>>,
-    commitments: HashMap<Hash, compute::Commitment>,
+    commitments: HashMap<Hash, Hash>,
 }
 
 impl VerificationRunner {
@@ -30,18 +29,15 @@ impl VerificationRunner {
         let base = BaseRunner::new(domains);
         let mut compute_scores = HashMap::new();
         let mut compute_tree = HashMap::new();
-        let mut active_assignments = HashMap::new();
         for domain in domains {
             let domain_hash = domain.to_hash();
             compute_scores.insert(domain_hash, HashMap::new());
             compute_tree.insert(domain_hash, HashMap::new());
-            active_assignments.insert(domain_hash, Vec::new());
         }
         Self {
             base,
             compute_scores,
             compute_tree,
-            active_assignments,
             commitments: HashMap::new(),
         }
     }
@@ -68,106 +64,64 @@ impl VerificationRunner {
             .map_err(Error::Base)
     }
 
-    /// Get the list of completed assignments for certain domain
-    pub fn check_finished_assignments(
-        &mut self,
-        domain: Domain,
-    ) -> Result<Vec<(Hash, bool)>, Error> {
-        info!("COMPLETED_ASSIGNMENT_SEARCH: {}", domain.to_hash());
-        let assignments = self
-            .active_assignments
-            .get(&domain.clone().to_hash())
-            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
-        let mut results = Vec::new();
-        let mut completed = Vec::new();
-        for assignment_id in assignments.clone().into_iter() {
-            if let Some(commitment) = self.commitments.get(&assignment_id.clone()) {
-                let assgn_tx = assignment_id.clone();
-                let cp_root = commitment.compute_root_hash().clone();
-
-                self.create_compute_tree(domain.clone(), assignment_id.clone())?;
-                let (res_lt_root, res_compute_root) =
-                    self.get_root_hashes(domain.clone(), assignment_id.clone())?;
-                info!(
-                    "LT_ROOT: {}, COMPUTE_ROOT: {}",
-                    res_lt_root, res_compute_root
-                );
-                let is_root_equal = cp_root == res_compute_root;
-                let is_converged =
-                    self.compute_verification(domain.clone(), assignment_id.clone())?;
-                results.push((assgn_tx.clone(), is_root_equal && is_converged));
-                completed.push(assignment_id.clone());
-                info!(
-                    "COMPLETED_ASSIGNMENT, DOMAIN: {}, is_root_equal: {}, is_converged: {}",
-                    domain.to_hash(),
-                    is_root_equal,
-                    is_converged,
-                );
-            }
-        }
-        let active_assignments = self
-            .active_assignments
-            .get_mut(&domain.clone().to_hash())
-            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
-        active_assignments.retain(|x| !completed.contains(x));
-        Ok(results)
+    /// Add a new commitment of certain assignment
+    pub fn update_commitment(&mut self, compute_id: Hash, commitment: Hash) {
+        self.commitments.insert(compute_id, commitment);
     }
 
     /// Add a new scores of certain transaction, for certain domain
     pub fn update_scores(
         &mut self,
         domain: Domain,
-        hash: Hash,
-        compute_scores: compute::Scores,
+        compute_id: Hash,
+        compute_scores: Vec<ScoreEntry>,
     ) -> Result<(), Error> {
         let score_values = self
             .compute_scores
             .get_mut(&domain.clone().to_hash())
             .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
-        score_values.insert(hash, compute_scores);
+        score_values.insert(compute_id, compute_scores);
         Ok(())
     }
 
-    /// Add a new verification assignment for certain domain.
-    pub fn update_assigment(
-        &mut self,
-        domain: Domain,
-        compute_assignment_tx_hash: Hash,
-    ) -> Result<(), Error> {
-        let active_assignments = self
-            .active_assignments
-            .get_mut(&domain.to_hash())
-            .ok_or(Error::ActiveAssignmentsNotFound(domain.to_hash()))?;
-        if !active_assignments.contains(&compute_assignment_tx_hash) {
-            active_assignments.push(compute_assignment_tx_hash);
-        }
-        Ok(())
-    }
+    /// Get the list of completed assignments for certain domain
+    pub fn verify_job(&mut self, domain: Domain, compute_id: Hash) -> Result<bool, Error> {
+        info!("COMPLETED_ASSIGNMENT_SEARCH: {}", domain.to_hash());
+        let commitment = self.commitments.get(&compute_id.clone()).unwrap();
+        let cp_root = commitment.clone();
 
-    /// Add a new commitment of certain assignment
-    pub fn update_commitment(&mut self, commitment: compute::Commitment) {
-        self.commitments
-            .insert(commitment.assignment_id().clone(), commitment.clone());
+        self.create_compute_tree(domain.clone(), compute_id.clone())?;
+        let (res_lt_root, res_compute_root) =
+            self.get_root_hashes(domain.clone(), compute_id.clone())?;
+        info!(
+            "LT_ROOT: {}, COMPUTE_ROOT: {}",
+            res_lt_root, res_compute_root
+        );
+        let is_root_equal = cp_root == res_compute_root;
+        let is_converged = self.compute_verification(domain.clone(), compute_id.clone())?;
+        info!(
+            "COMPLETED_ASSIGNMENT, DOMAIN: {}, is_root_equal: {}, is_converged: {}",
+            domain.to_hash(),
+            is_root_equal,
+            is_converged,
+        );
+
+        return Ok(is_root_equal && is_converged);
     }
 
     /// Build the compute tree of certain assignment, for certain domain.
-    pub fn create_compute_tree(
-        &mut self,
-        domain: Domain,
-        assignment_id: Hash,
-    ) -> Result<(), Error> {
+    fn create_compute_tree(&mut self, domain: Domain, compute_id: Hash) -> Result<(), Error> {
         info!("CREATE_COMPUTE_TREE: {}", domain.to_hash());
         let compute_tree_map = self
             .compute_tree
             .get_mut(&domain.to_hash())
             .ok_or(Error::ComputeTreeNotFoundWithDomain(domain.to_hash()))?;
-        let commitment = self.commitments.get(&assignment_id).unwrap();
         let compute_scores = self
             .compute_scores
             .get(&domain.to_hash())
             .ok_or(Error::ComputeScoresNotFoundWithDomain(domain.to_hash()))?;
-        let scores = compute_scores.get(commitment.scores_id()).unwrap();
-        let score_entries: Vec<f32> = scores.entries().iter().map(|x| *x.value()).collect();
+        let scores = compute_scores.get(&compute_id).unwrap();
+        let score_entries: Vec<f32> = scores.iter().map(|x| *x.value()).collect();
         let score_hashes: Vec<Hash> = score_entries
             .iter()
             .map(|&x| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
@@ -178,18 +132,13 @@ impl VerificationRunner {
             "COMPUTE_TREE_ROOT_HASH: {}",
             compute_tree.root().map_err(Error::Merkle)?
         );
-        compute_tree_map.insert(assignment_id.clone(), compute_tree);
+        compute_tree_map.insert(compute_id, compute_tree);
 
         Ok(())
     }
 
     /// Get the verification result(True or False) of certain assignment, for certain domain
-    pub fn compute_verification(
-        &mut self,
-        domain: Domain,
-        assignment_id: Hash,
-    ) -> Result<bool, Error> {
-        let commitment = self.commitments.get(&assignment_id).unwrap();
+    fn compute_verification(&mut self, domain: Domain, compute_id: Hash) -> Result<bool, Error> {
         let compute_scores = self
             .compute_scores
             .get(&domain.to_hash())
@@ -214,12 +163,10 @@ impl VerificationRunner {
             .seed_trust
             .get(&domain.seed_namespace())
             .ok_or::<Error>(BaseError::SeedTrustNotFound(domain.seed_namespace()).into())?;
-        let scores = compute_scores.get(commitment.scores_id()).unwrap();
+        let scores = compute_scores.get(&compute_id).unwrap();
         let score_entries: BTreeMap<u64, f32> = {
-            let score_entries_vec = scores.entries();
-
             let mut score_entries_map: BTreeMap<u64, f32> = BTreeMap::new();
-            for entry in score_entries_vec {
+            for entry in scores {
                 let i = domain_indices
                     .get(entry.id())
                     .ok_or(Error::DomainIndexNotFound(entry.id().clone()))?;

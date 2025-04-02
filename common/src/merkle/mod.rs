@@ -18,6 +18,14 @@ pub mod incremental;
 pub struct Hash(#[serde(with = "hex")] [u8; 32]);
 
 impl Hash {
+    pub fn from_slice(slice: &[u8]) -> Self {
+        Self(<[u8; 32]>::try_from(slice).unwrap())
+    }
+
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     /// Converts the hash to a hex string.
     pub fn to_hex(self) -> String {
         hex::encode(self.0)
