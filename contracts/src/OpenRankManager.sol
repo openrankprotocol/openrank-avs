@@ -34,8 +34,8 @@ contract OpenRankManager {
         uint256 timestamp;
     }
 
-    uint256 constant CHALLENGE_WINDOW = 60;
-    uint256 constant RXP_WINDOW = 60;
+    uint64 public constant CHALLENGE_WINDOW = 60;
+    uint64 public constant RXP_WINDOW = 60;
     uint256 public constant FEE = 100;
     uint256 public constant STAKE = 100;
 

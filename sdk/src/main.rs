@@ -1,6 +1,6 @@
 mod sol;
 
-use alloy::hex::FromHex;
+use alloy::hex::{self, FromHex};
 use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::ProviderBuilder;
 use alloy::rpc::client::RpcClient;

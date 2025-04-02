@@ -1,9 +1,9 @@
+use alloy::hex::{self, FromHex};
 use alloy_primitives::Address;
 use alloy_rlp::{BufMut, Decodable, Encodable, Error as RlpError, Result as RlpResult};
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use core::result::Result as CoreResult;
 use getset::Getters;
-use hex::FromHex;
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Read;

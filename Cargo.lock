@@ -3315,11 +3315,11 @@ checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 name = "openrank-common"
 version = "0.0.1"
 dependencies = [
+ "alloy",
  "alloy-primitives",
  "alloy-rlp",
  "alloy-rlp-derive",
  "getset",
- "hex",
  "k256",
  "rand 0.8.5",
  "rayon",
@@ -3346,7 +3346,6 @@ dependencies = [
  "csv",
  "dotenv",
  "futures-util",
- "hex",
  "openrank-common",
  "sha3",
  "tokio",
@@ -3365,7 +3364,6 @@ dependencies = [
  "clap",
  "csv",
  "dotenv",
- "hex",
  "openrank-common",
  "sha3",
  "tokio",

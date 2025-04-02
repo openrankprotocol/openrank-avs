@@ -5,10 +5,10 @@ pub mod runners;
 pub mod tx;
 
 use crate::tx::trust::OwnedNamespace;
+use alloy::hex::{self, FromHex};
 use alloy_primitives::Address;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use getset::Getters;
-use hex::FromHex;
 use k256::ecdsa::SigningKey;
 use merkle::hash_leaf;
 use serde::{Deserialize, Serialize};
