@@ -24,7 +24,7 @@ enum Method {
     UploadSeed { path: String },
     DownloadTrust { trust_id: String, path: String },
     DownloadSeed { seed_id: String, path: String },
-    DownloadScores { scores_id: String },
+    DownloadScores { scores_id: String, path: String },
     RequestCompute { trust_id: String, seed_id: String },
 }
 
@@ -130,14 +130,18 @@ async fn main() -> Result<(), AwsError> {
                 file.write(&bytes.unwrap()).unwrap();
             }
         }
-        Method::DownloadScores { scores_id } => {
-            let res = client
+        Method::DownloadScores { scores_id, path } => {
+            let mut file = File::create(path).unwrap();
+            let mut res = client
                 .get_object()
                 .bucket(bucket_name)
                 .key(format!("scores/{}", scores_id))
                 .send()
                 .await?;
             println!("{:?}", res);
+            while let Some(bytes) = res.body.next().await {
+                file.write(&bytes.unwrap()).unwrap();
+            }
         }
         Method::RequestCompute { trust_id, seed_id } => {
             let provider = ProviderBuilder::new()

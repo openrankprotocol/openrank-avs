@@ -15,3 +15,5 @@ contracts/docs/
 
 # Dotenv file
 .env
+
+data/

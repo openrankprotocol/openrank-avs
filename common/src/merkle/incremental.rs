@@ -29,7 +29,10 @@ where
 {
     /// Returns the root of the tree.
     pub fn root(&self) -> Result<Hash, merkle::Error> {
-        self.nodes.get(&(self.num_levels, 0)).cloned().ok_or(merkle::Error::RootNotFound)
+        self.nodes
+            .get(&(self.num_levels, 0))
+            .cloned()
+            .ok_or(merkle::Error::RootNotFound)
     }
 
     /// Builds a Merkle tree from given height (`num_levels`).
@@ -44,7 +47,12 @@ where
             default.insert(((i + 1) as u8, 0), h);
         }
 
-        Self { nodes: default.clone(), default, num_levels, _h: PhantomData }
+        Self {
+            nodes: default.clone(),
+            default,
+            num_levels,
+            _h: PhantomData,
+        }
     }
 
     /// Insert a single leaf to tree.

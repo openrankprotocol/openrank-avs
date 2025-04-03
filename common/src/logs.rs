@@ -5,7 +5,9 @@ pub fn setup_tracing() {
     let custom_iso = well_known::Iso8601::<
         {
             well_known::iso8601::Config::DEFAULT
-                .set_time_precision(TimePrecision::Second { decimal_digits: None })
+                .set_time_precision(TimePrecision::Second {
+                    decimal_digits: None,
+                })
                 .encode()
         },
     >;

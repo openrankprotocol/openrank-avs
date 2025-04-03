@@ -22,36 +22,34 @@ use tokio::{select, time};
 
 use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
-const TICK_DURATION: u64 = 10;
+const TICK_DURATION: u64 = 30;
 
-pub async fn run<P: Provider>(
-    contract: OpenRankManagerInstance<(), P>,
-    provider: P,
+pub async fn run<PH: Provider, PW: Provider>(
+    contract: OpenRankManagerInstance<(), PH>,
+    contract_ws: OpenRankManagerInstance<(), PW>,
+    provider_http: PH,
     s3_client: Client,
     bucket_name: String,
 ) {
-    let challenge_window = contract.CHALLENGE_WINDOW().call().await.unwrap();
-
     // Create filters for each event.
-    let compute_request_filter = contract
+    let compute_request_filter = contract_ws
         .ComputeRequestEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let compute_result_filter = contract
+    let compute_result_filter = contract_ws
         .ComputeResultEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let challenge_filter = contract
+    let challenge_filter = contract_ws
         .ChallengeEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let job_finalised_filter = contract
+    let job_finalised_filter = contract_ws
         .JobFinalized_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
@@ -67,9 +65,12 @@ pub async fn run<P: Provider>(
     let mut compute_result_map = HashMap::new();
     let mut finalized_jobs_map = HashMap::new();
 
-    println!("Running the node");
+    let challenge_window = contract.CHALLENGE_WINDOW().call().await.unwrap();
+
+    println!("Running the computer node");
 
     loop {
+        println!("loop");
         select! {
             compute_request_event = compute_request_stream.next() => {
                 if let Some(res) = compute_request_event {
@@ -104,11 +105,15 @@ pub async fn run<P: Provider>(
                         seed_file.write(&bytes.unwrap()).unwrap();
                     }
 
+                    let trust_file = File::open(&format!("./trust/{}", trust_id_str)).unwrap();
+                    let seed_file = File::open(&format!("./seed/{}", seed_id_str)).unwrap();
+
                     let mut trust_rdr = csv::Reader::from_reader(trust_file);
                     let mut seed_rdr = csv::Reader::from_reader(seed_file);
 
                     let mut trust_entries = Vec::new();
                     for result in trust_rdr.records() {
+                        println!("{:?}", result);
                         let record: StringRecord = result.unwrap();
                         let (from, to, value): (String, String, f32) =
                             record.deserialize(None).unwrap();
@@ -153,7 +158,7 @@ pub async fn run<P: Provider>(
                     let res = s3_client
                         .put_object()
                         .bucket(bucket_name.clone())
-                        .key(format!("./scores/{}", hex::encode(scores_id.clone())))
+                        .key(format!("scores/{}", hex::encode(scores_id.clone())))
                         .body(body)
                         .send()
                         .await.unwrap();
@@ -200,9 +205,13 @@ pub async fn run<P: Provider>(
                 }
             }
             _ = interval.tick() => {
-                let block = provider.get_block(BlockId::Number(BlockNumberOrTag::Latest)).await.unwrap().unwrap();
+                let block = provider_http.get_block(BlockId::Number(BlockNumberOrTag::Latest)).await.unwrap().unwrap();
                 for (compute_id, log) in compute_result_map.iter() {
-                    let challenge_window_expired = block.header.timestamp - log.block_timestamp.unwrap() > challenge_window._0;
+                    let log_block = provider_http.get_block(
+                        BlockId::Number(BlockNumberOrTag::Number(log.block_number.unwrap()))
+                    ).await.unwrap().unwrap();
+
+                    let challenge_window_expired = block.header.timestamp - log_block.header.timestamp > challenge_window._0;
                     if !finalized_jobs_map.contains_key(compute_id) && challenge_window_expired {
                         let res = contract
                             .finalizeJob(*compute_id)

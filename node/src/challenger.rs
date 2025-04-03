@@ -60,9 +60,7 @@ pub async fn run<P: Provider>(
     let mut challanged_jobs_map = HashMap::new();
     let mut finalized_jobs_map = HashMap::new();
 
-    println!("Running the node");
-
-    // FixedBytes::as_slice(&self)
+    println!("Running the challenger node");
 
     loop {
         select! {
@@ -85,7 +83,10 @@ pub async fn run<P: Provider>(
                     let already_finalized = finalized_jobs_map.contains_key(&compute_res.computeId);
 
                     let block = provider.get_block(BlockId::Number(BlockNumberOrTag::Latest)).await.unwrap().unwrap();
-                    let challenge_period_expired = (block.header.timestamp - log.block_timestamp.unwrap()) < challenge_window._0;
+                    let log_block = provider.get_block(
+                        BlockId::Number(BlockNumberOrTag::Number(log.block_number.unwrap()))
+                    ).await.unwrap().unwrap();
+                    let challenge_period_expired = (block.header.timestamp - log_block.header.timestamp) < challenge_window._0;
                     if already_challenged || already_finalized || challenge_period_expired {
                         continue;
                     }
@@ -102,19 +103,19 @@ pub async fn run<P: Provider>(
                     let mut trust_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(trust_path)
+                        .key(format!("trust/{:#x}", compute_req.trust_id))
                         .send()
                         .await.unwrap();
                     let mut seed_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(seed_path)
+                        .key(format!("seed/{:#x}", compute_req.seed_id))
                         .send()
                         .await.unwrap();
                     let mut scores_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(scores_path)
+                        .key(format!("scores/{:#x}", compute_res.scores_id))
                         .send()
                         .await.unwrap();
 
@@ -128,6 +129,10 @@ pub async fn run<P: Provider>(
                     while let Some(bytes) = scores_res.body.next().await {
                         scores_file.write(&bytes.unwrap()).unwrap();
                     }
+
+                    let trust_file = File::open(&trust_path).unwrap();
+                    let seed_file = File::open(&seed_path).unwrap();
+                    let scores_file = File::open(&seed_path).unwrap();
 
                     let mut trust_rdr = csv::Reader::from_reader(trust_file);
                     let mut seed_rdr = csv::Reader::from_reader(seed_file);

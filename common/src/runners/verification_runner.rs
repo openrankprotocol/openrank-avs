@@ -1,10 +1,7 @@
 use crate::{
     algos::et::convergence_check,
     merkle::{self, fixed::DenseMerkleTree, hash_leaf, Hash},
-    tx::{
-        compute,
-        trust::{ScoreEntry, TrustEntry},
-    },
+    tx::trust::{ScoreEntry, TrustEntry},
     Domain, DomainHash,
 };
 use getset::Getters;
