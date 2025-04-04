@@ -23,3 +23,4 @@ sha3 = { workspace = true }
 csv = { workspace = true }
 base64 = { workspace = true }
 rustls = { workspace = true }
+tracing = { workspace = true }

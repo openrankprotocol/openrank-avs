@@ -3418,6 +3418,7 @@ dependencies = [
  "rustls 0.23.25",
  "sha3",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

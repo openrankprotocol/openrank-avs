@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Read;
 
-use crate::DomainHash;
-
 #[derive(
     Debug, Clone, Hash, Default, PartialEq, Eq, RlpDecodable, RlpEncodable, Serialize, Deserialize,
 )]
@@ -170,30 +168,5 @@ impl Decodable for TrustEntry {
         }
         let value = f32::from_be_bytes(value_bytes);
         Ok(TrustEntry { from, to, value })
-    }
-}
-
-#[derive(Getters)]
-#[getset(get = "pub")]
-pub struct Assignment {
-    to_sequence: u64,
-    domain_id: DomainHash,
-    trust_builder: Address,
-    trust_verifiers: Vec<Address>,
-}
-
-impl Assignment {
-    pub fn new(
-        to_sequence: u64,
-        domain_id: DomainHash,
-        trust_builder: Address,
-        trust_verifiers: Vec<Address>,
-    ) -> Self {
-        Self {
-            to_sequence,
-            domain_id,
-            trust_builder,
-            trust_verifiers,
-        }
     }
 }

@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use tokio::select;
+use tracing::{debug, info};
 
 use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
@@ -60,15 +61,18 @@ pub async fn run<P: Provider>(
     let mut challanged_jobs_map = HashMap::new();
     let mut finalized_jobs_map = HashMap::new();
 
-    println!("Running the challenger node");
+    info!("Running the challenger node...");
 
     loop {
         select! {
             compute_request_event = compute_request_stream.next() => {
                 if let Some(res) = compute_request_event {
                     let (compute_req, log): (ComputeRequestEvent, Log) = res.unwrap();
-                    println!("({} {} {})", compute_req.computeId, compute_req.trust_id, compute_req.seed_id);
-                    println!("{:?}", log);
+                    info!(
+                        "ComputeRequestEvent: ComputeId({}), TrustId({:#}), SeedId({:#})",
+                        compute_req.computeId, compute_req.trust_id, compute_req.seed_id
+                    );
+                    debug!("{:?}", log);
 
                     compute_request_map.insert(compute_req.computeId, compute_req);
                 }
@@ -76,8 +80,11 @@ pub async fn run<P: Provider>(
             compute_result_event = compute_result_stream.next() => {
                 if let Some(res) = compute_result_event {
                     let (compute_res, log): (ComputeResultEvent, Log) = res.unwrap();
-                    println!("({} {} {})", compute_res.computeId, compute_res.commitment, compute_res.scores_id);
-                    println!("{:?}", log);
+                    info!(
+                        "ComputeResultEvent: ComputeId({}), Commitment({}), ScoresId({})",
+                        compute_res.computeId, compute_res.commitment, compute_res.scores_id
+                    );
+                    debug!("Log: {:?}", log);
 
                     let already_challenged = challanged_jobs_map.contains_key(&compute_res.computeId);
                     let already_finalized = finalized_jobs_map.contains_key(&compute_res.computeId);
@@ -92,6 +99,8 @@ pub async fn run<P: Provider>(
                     }
 
                     let compute_req = compute_request_map.get(&compute_res.computeId).unwrap();
+
+                    info!("Downloading data...");
 
                     let trust_path = format!("./trust/{:#x}", compute_req.trust_id);
                     let seed_path = format!("./seed/{:#x}", compute_req.seed_id);
@@ -165,6 +174,7 @@ pub async fn run<P: Provider>(
                         scores_entries.push(score_entry);
                     }
 
+                    info!("Starting core compute...");
                     let mock_domain = Domain::default();
                     let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
                     runner
@@ -183,24 +193,26 @@ pub async fn run<P: Provider>(
                         scores_entries
                     ).unwrap();
                     let result = runner.verify_job(mock_domain, Hash::from_bytes(compute_res.computeId.to_be_bytes())).unwrap();
+                    info!("Core Compute verification completed. Result({})", result);
+
                     if !result {
-                        let required_stake = contract.STAKE().call().await.unwrap();
-                        println!("{:?}", required_stake._0);
+                        info!("Submitting challenge. Calling 'submitChallenge'");
+                        // let required_stake = contract.STAKE().call().await.unwrap();
                         let res = contract
                             .submitChallenge(compute_res.computeId)
-                            .value(required_stake._0)
+                            // .value(required_stake._0) // Challenger stake not required
                             .send()
                             .await
                             .unwrap();
-                        println!("Tx Hash: {}", res.watch().await.unwrap());
+                        info!("'submitChallenge' completed. Tx Hash({:#})", res.watch().await.unwrap());
                     }
                 }
             }
             challenge_event = challenge_stream.next() => {
                 if let Some(res) = challenge_event {
                     let (challenge, log): (ChallengeEvent, Log) = res.unwrap();
-                    println!("({})", challenge.computeId);
-                    println!("{:?}", log);
+                    info!("ChallengeEvent: ComputeId({:#})", challenge.computeId);
+                    debug!("{:?}", log);
 
                     challanged_jobs_map.insert(challenge.computeId, log);
                 }
@@ -208,8 +220,8 @@ pub async fn run<P: Provider>(
             job_finalised_event = job_finalised_stream.next() => {
                 if let Some(res) = job_finalised_event {
                     let (job_finalized, log): (JobFinalized, Log) = res.unwrap();
-                    println!("({})", job_finalized.computeId);
-                    println!("{:?}", log);
+                    println!("JobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
+                    debug!("{:?}", log);
 
                     finalized_jobs_map.insert(job_finalized.computeId, log);
                 }

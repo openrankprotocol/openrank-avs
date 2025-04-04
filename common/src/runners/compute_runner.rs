@@ -1,10 +1,7 @@
 use crate::{
     algos::et::positive_run,
     merkle::{self, fixed::DenseMerkleTree, hash_leaf, Hash},
-    tx::{
-        compute,
-        trust::{ScoreEntry, TrustEntry},
-    },
+    tx::trust::{ScoreEntry, TrustEntry},
     Domain, DomainHash,
 };
 use getset::Getters;
@@ -105,7 +102,7 @@ impl ComputeRunner {
     }
 
     /// Get the compute scores for certain domain.
-    pub fn get_compute_scores(&self, domain: Domain) -> Result<Vec<compute::Scores>, Error> {
+    pub fn get_compute_scores(&self, domain: Domain) -> Result<Vec<ScoreEntry>, Error> {
         let domain_indices = self
             .base
             .indices
@@ -117,20 +114,16 @@ impl ComputeRunner {
             .ok_or(Error::ComputeResultsNotFound(domain.to_hash()))?;
         let index_to_address: HashMap<&u64, &String> =
             domain_indices.iter().map(|(k, v)| (v, k)).collect();
-        let mut compute_scores_txs = Vec::new();
-        for chunk in scores.chunks(1000) {
-            let mut entries = Vec::new();
-            for (index, val) in chunk {
-                let address = index_to_address
-                    .get(&index)
-                    .ok_or(Error::IndexToAddressNotFound(*index))?;
-                let score_entry = ScoreEntry::new((*address).clone(), *val);
-                entries.push(score_entry);
-            }
-            let compute_scores = compute::Scores::new(entries);
-            compute_scores_txs.push(compute_scores);
+
+        let mut entries = Vec::new();
+        for (index, val) in scores {
+            let address = index_to_address
+                .get(&index)
+                .ok_or(Error::IndexToAddressNotFound(*index))?;
+            let score_entry = ScoreEntry::new((*address).clone(), *val);
+            entries.push(score_entry);
         }
-        Ok(compute_scores_txs)
+        Ok(entries)
     }
 
     /// Get the local trust root hash and compute tree root hash for certain domain.
