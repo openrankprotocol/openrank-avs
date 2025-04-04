@@ -13,6 +13,7 @@ use aws_config::from_env;
 use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
+use openrank_common::logs::setup_tracing;
 use sol::OpenRankManager;
 
 #[derive(Parser, Debug)]
@@ -26,6 +27,8 @@ struct Args {
 async fn main() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     dotenv().ok();
+    setup_tracing();
+
     let cli = Args::parse();
 
     let bucket_name = std::env::var("BUCKET_NAME").expect("BUCKET_NAME must be set.");

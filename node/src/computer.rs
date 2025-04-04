@@ -10,7 +10,6 @@ use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
 use csv::StringRecord;
 use futures_util::StreamExt;
-use openrank_common::logs::setup_tracing;
 use openrank_common::runners::compute_runner::ComputeRunner;
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use openrank_common::Domain;
@@ -20,7 +19,7 @@ use std::fs::File;
 use std::io::Write;
 use std::time::Duration;
 use tokio::{select, time};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
@@ -33,7 +32,6 @@ pub async fn run<PH: Provider, PW: Provider>(
     s3_client: Client,
     bucket_name: String,
 ) {
-    setup_tracing();
     // Create filters for each event.
     let compute_request_filter = contract_ws
         .ComputeRequestEvent_filter()
@@ -70,7 +68,7 @@ pub async fn run<PH: Provider, PW: Provider>(
 
     let challenge_window = contract.CHALLENGE_WINDOW().call().await.unwrap();
 
-    println!("Running the computer node...");
+    info!("Running the computer node...");
 
     loop {
         select! {
@@ -151,6 +149,7 @@ pub async fn run<PH: Provider, PW: Provider>(
 
                     let scores_vec = Vec::new();
                     let mut wtr = csv::Writer::from_writer(scores_vec);
+                    wtr.write_record(&["i", "v"]).unwrap();
                     scores.iter().for_each(|x| {
                         wtr.write_record(&[x.id(), x.value().to_string().as_str()]).unwrap();
                     });
@@ -225,13 +224,17 @@ pub async fn run<PH: Provider, PW: Provider>(
 
                     let challenge_window_expired = block.header.timestamp - log_block.header.timestamp > challenge_window._0;
                     if !finalized_jobs_map.contains_key(compute_id) && challenge_window_expired {
-                        info!("Job found: ComputeId({:#})", compute_id);
+                        info!("Found job to finalize: ComputeId({:#}). Calling 'finalizeJob'", compute_id);
                         let res = contract
                             .finalizeJob(*compute_id)
                             .send()
-                            .await
-                            .unwrap();
-                        info!("Job Finalised. Tx Hash: {:#}", res.watch().await.unwrap());
+                            .await;
+                        if let Ok(res) = res {
+                            info!("Job Finalised. Tx Hash: {:#}", res.watch().await.unwrap());
+                        } else {
+                            let err = res.unwrap_err();
+                            error!("'finalizeJob' failed. {}", err);
+                        }
                     }
                 }
             }

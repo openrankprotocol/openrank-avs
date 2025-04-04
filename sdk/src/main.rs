@@ -72,14 +72,14 @@ async fn main() -> Result<(), AwsError> {
                 let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
             }
 
-            let res = client
+            client
                 .put_object()
                 .bucket(bucket_name)
                 .key(format!("trust/{}", hex::encode(hash.clone())))
                 .body(body)
                 .send()
                 .await?;
-            println!("{:?}", res);
+            println!("Hash:({})", hex::encode(hash.clone()));
         }
         Method::UploadSeed { path } => {
             let mut f = File::open(path.clone()).unwrap();
@@ -97,14 +97,14 @@ async fn main() -> Result<(), AwsError> {
                 let (_, _): (String, f32) = record.deserialize(None).unwrap();
             }
 
-            let res = client
+            client
                 .put_object()
                 .bucket(bucket_name)
                 .key(format!("seed/{}", hex::encode(hash.clone())))
                 .body(body)
                 .send()
                 .await?;
-            println!("{:?}", res);
+            println!("Hash:({})", hex::encode(hash.clone()));
         }
         Method::DownloadTrust { trust_id, path } => {
             let mut file = File::create(path).unwrap();
@@ -155,7 +155,6 @@ async fn main() -> Result<(), AwsError> {
             let seed_id_bytes = FixedBytes::from_hex(seed_id).unwrap();
 
             let required_fee = contract.FEE().call().await.unwrap();
-            println!("{:?}", required_fee._0);
             let res = contract
                 .submitComputeRequest(trust_id_bytes, seed_id_bytes)
                 .value(required_fee._0)

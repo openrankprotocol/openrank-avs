@@ -2,6 +2,7 @@ use crate::sol::OpenRankManager::{
     ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized,
 };
 use alloy::eips::{BlockId, BlockNumberOrTag};
+use alloy::hex;
 use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use aws_sdk_s3::Client;
@@ -15,7 +16,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use tokio::select;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
@@ -81,7 +82,7 @@ pub async fn run<P: Provider>(
                 if let Some(res) = compute_result_event {
                     let (compute_res, log): (ComputeResultEvent, Log) = res.unwrap();
                     info!(
-                        "ComputeResultEvent: ComputeId({}), Commitment({}), ScoresId({})",
+                        "ComputeResultEvent: ComputeId({}), Commitment({:#}), ScoresId({:#})",
                         compute_res.computeId, compute_res.commitment, compute_res.scores_id
                     );
                     debug!("Log: {:?}", log);
@@ -93,8 +94,7 @@ pub async fn run<P: Provider>(
                     let log_block = provider.get_block(
                         BlockId::Number(BlockNumberOrTag::Number(log.block_number.unwrap()))
                     ).await.unwrap().unwrap();
-                    let challenge_period_expired = (block.header.timestamp - log_block.header.timestamp) < challenge_window._0;
-                    if already_challenged || already_finalized || challenge_period_expired {
+                    if already_challenged || already_finalized {
                         continue;
                     }
 
@@ -102,29 +102,29 @@ pub async fn run<P: Provider>(
 
                     info!("Downloading data...");
 
-                    let trust_path = format!("./trust/{:#x}", compute_req.trust_id);
-                    let seed_path = format!("./seed/{:#x}", compute_req.seed_id);
-                    let scores_path = format!("./scores/{:#x}", compute_res.scores_id);
-                    let mut trust_file = File::create(&trust_path).unwrap();
-                    let mut seed_file = File::create(&seed_path).unwrap();
-                    let mut scores_file = File::create(&scores_path).unwrap();
+                    let trust_id_str = hex::encode(compute_req.trust_id.as_slice());
+                    let seed_id_str = hex::encode(compute_req.seed_id.as_slice());
+                    let scores_id_str = hex::encode(compute_res.scores_id.as_slice());
+                    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str)).unwrap();
+                    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str)).unwrap();
+                    let mut scores_file = File::create(&format!("./scores/{}", scores_id_str)).unwrap();
 
                     let mut trust_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(format!("trust/{:#x}", compute_req.trust_id))
+                        .key(format!("trust/{}", trust_id_str))
                         .send()
                         .await.unwrap();
                     let mut seed_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(format!("seed/{:#x}", compute_req.seed_id))
+                        .key(format!("seed/{}", seed_id_str))
                         .send()
                         .await.unwrap();
                     let mut scores_res = s3_client
                         .get_object()
                         .bucket(bucket_name.clone())
-                        .key(format!("scores/{:#x}", compute_res.scores_id))
+                        .key(format!("scores/{}", scores_id_str))
                         .send()
                         .await.unwrap();
 
@@ -139,9 +139,9 @@ pub async fn run<P: Provider>(
                         scores_file.write(&bytes.unwrap()).unwrap();
                     }
 
-                    let trust_file = File::open(&trust_path).unwrap();
-                    let seed_file = File::open(&seed_path).unwrap();
-                    let scores_file = File::open(&seed_path).unwrap();
+                    let trust_file = File::open(&format!("./trust/{}", trust_id_str)).unwrap();
+                    let seed_file = File::open(&format!("./seed/{}", seed_id_str)).unwrap();
+                    let scores_file = File::open(&format!("./scores/{}", scores_id_str)).unwrap();
 
                     let mut trust_rdr = csv::Reader::from_reader(trust_file);
                     let mut seed_rdr = csv::Reader::from_reader(seed_file);
@@ -195,16 +195,23 @@ pub async fn run<P: Provider>(
                     let result = runner.verify_job(mock_domain, Hash::from_bytes(compute_res.computeId.to_be_bytes())).unwrap();
                     info!("Core Compute verification completed. Result({})", result);
 
-                    if !result {
+                    let challenge_window_open = (block.header.timestamp - log_block.header.timestamp) < challenge_window._0;
+                    info!("Challenge window open: {}", challenge_window_open);
+
+                    if !result && challenge_window_open {
                         info!("Submitting challenge. Calling 'submitChallenge'");
                         // let required_stake = contract.STAKE().call().await.unwrap();
                         let res = contract
                             .submitChallenge(compute_res.computeId)
                             // .value(required_stake._0) // Challenger stake not required
                             .send()
-                            .await
-                            .unwrap();
-                        info!("'submitChallenge' completed. Tx Hash({:#})", res.watch().await.unwrap());
+                            .await;
+                        if let Ok(res) = res {
+                            info!("'submitChallenge' completed. Tx Hash({:#})", res.watch().await.unwrap());
+                        } else {
+                            let err = res.unwrap_err();
+                            error!("'submitChallenge' failed. {}", err);
+                        }
                     }
                 }
             }
@@ -220,7 +227,7 @@ pub async fn run<P: Provider>(
             job_finalised_event = job_finalised_stream.next() => {
                 if let Some(res) = job_finalised_event {
                     let (job_finalized, log): (JobFinalized, Log) = res.unwrap();
-                    println!("JobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
+                    info!("JobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
                     debug!("{:?}", log);
 
                     finalized_jobs_map.insert(job_finalized.computeId, log);

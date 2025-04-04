@@ -140,7 +140,8 @@ pub fn positive_run(
         // Normalise n+2 scores
         let n_plus_2_scores = normalise_scores(&n_plus_2_scores);
         // Check for convergence.
-        let (is_converged, _) = is_converged(&n_plus_1_scores, &n_plus_2_scores);
+        let (is_converged, unconverged_count) = is_converged(&n_plus_1_scores, &n_plus_2_scores);
+        info!("ITER: {}, UNCONVERGED: {}", i, unconverged_count);
         if is_converged {
             // Return previous iteration, since the scores are converged.
             scores = n_plus_1_scores;
@@ -180,22 +181,30 @@ pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32
         .reduce(|| (true, 0), |(x, i1), (b, i2)| (x & b, i1 + i2))
 }
 
-/// Same as `is_converged`, but accepts the scores map in it's original form, where peers are identified by a `String`.
-pub fn is_converged_org(
-    scores: &BTreeMap<String, f32>,
-    next_scores: &BTreeMap<String, f32>,
-) -> bool {
+pub fn is_converged_verifier(
+    scores: &BTreeMap<u64, f32>,
+    next_scores: &BTreeMap<u64, f32>,
+) -> (bool, u32) {
+    // Iterate over the scores and check if they have converged.
     scores
         .par_iter()
         .fold(
-            || true,
-            |is_converged, (i, v)| {
+            || (true, 0),
+            |(is_converged, count), (i, v)| {
+                // Get the next score of the node.
                 let next_score = next_scores.get(i).unwrap_or(&0.0);
-                let curr_converged = (next_score - v).abs() < DELTA;
-                is_converged & curr_converged
+                // Check if the score has converged.
+                let curr_converged = (next_score - v).abs() <= DELTA;
+                let new_count = if !curr_converged {
+                    println!("{}, {}", (next_score - v).abs(), DELTA);
+                    count + 1
+                } else {
+                    count
+                };
+                (is_converged & curr_converged, new_count)
             },
         )
-        .reduce(|| true, |x, b| x & b)
+        .reduce(|| (true, 0), |(x, i1), (b, i2)| (x & b, i1 + i2))
 }
 
 /// It performs a single iteration of the positive run EigenTrust algorithm on the given local trust matrix (`lt`),
@@ -230,7 +239,7 @@ pub fn convergence_check(
     let next_scores = normalise_scores(&next_scores);
 
     // Check if the scores have converged
-    let (is_converged, count) = is_converged(scores, &next_scores);
+    let (is_converged, count) = is_converged_verifier(scores, &next_scores);
     if !is_converged {
         info!(
             "CONVERGENCE_FAILED: {:?} INVALID_COUNT: {}",
