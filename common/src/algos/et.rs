@@ -14,7 +14,7 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 ///
 /// If the absolute difference between the current score and the next score is
 /// less than `DELTA`, the score has converged.
-const DELTA: f32 = 0.01;
+const DELTA: f32 = 0.001;
 
 fn find_reachable_peers(
     lt: &BTreeMap<u64, OutboundLocalTrust>,

@@ -14,8 +14,9 @@ use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use sha3::{Digest, Keccak256};
 use sol::OpenRankManager;
+use std::collections::HashSet;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
@@ -26,6 +27,7 @@ enum Method {
     DownloadSeed { seed_id: String, path: String },
     DownloadScores { scores_id: String, path: String },
     RequestCompute { trust_id: String, seed_id: String },
+    Temp { path: String },
 }
 
 #[derive(Parser, Debug)]
@@ -162,6 +164,24 @@ async fn main() -> Result<(), AwsError> {
                 .await
                 .unwrap();
             println!("Tx Hash: {}", res.watch().await.unwrap());
+        }
+        Method::Temp { path } => {
+            let file = File::open(path).unwrap();
+            let mut sum = 0;
+            let mut biggest = 0;
+            let mut viewed = HashSet::new();
+            for line in BufReader::new(file).lines() {
+                let a: u64 = line.unwrap().parse::<u64>().unwrap();
+                if a > biggest {
+                    biggest = a;
+                }
+                if !viewed.contains(&a) {
+                    sum += a;
+                }
+                viewed.insert(a);
+            }
+            println!("sum: {}", sum);
+            println!("biggest: {}", biggest);
         }
     };
 

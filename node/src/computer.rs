@@ -17,7 +17,7 @@ use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::{select, time};
 use tracing::{debug, error, info};
 
@@ -74,6 +74,8 @@ pub async fn run<PH: Provider, PW: Provider>(
         select! {
             compute_request_event = compute_request_stream.next() => {
                 if let Some(res) = compute_request_event {
+                    let start = Instant::now();
+
                     let (compute_req, log): (ComputeRequestEvent, Log) = res.unwrap();
                     info!(
                         "ComputeRequestEvent: ComputeId({}), TrustId({:#}), SeedId({:#})",
@@ -137,10 +139,10 @@ pub async fn run<PH: Provider, PW: Provider>(
                     let mock_domain = Domain::default();
                     let mut runner = ComputeRunner::new(&[mock_domain.clone()]);
                     runner
-                        .update_trust(mock_domain.clone(), trust_entries.to_vec())
+                        .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
                         .unwrap();
                     runner
-                        .update_seed(mock_domain.clone(), seed_entries.to_vec())
+                        .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
                         .unwrap();
                     runner.compute(mock_domain.clone()).unwrap();
                     let scores = runner.get_compute_scores(mock_domain.clone()).unwrap();
@@ -174,6 +176,9 @@ pub async fn run<PH: Provider, PW: Provider>(
                         .await.unwrap();
 
                     info!("Upload scores complete...");
+
+                    let elapsed = start.elapsed();
+                    println!("{:?}", elapsed);
 
                     info!("Posting commitment on-chain. Calling: 'submitComputeResult'");
                     let required_stake = contract.STAKE().call().await.unwrap();

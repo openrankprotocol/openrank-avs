@@ -178,10 +178,10 @@ pub async fn run<P: Provider>(
                     let mock_domain = Domain::default();
                     let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
                     runner
-                        .update_trust(mock_domain.clone(), trust_entries.to_vec())
+                        .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
                         .unwrap();
                     runner
-                        .update_seed(mock_domain.clone(), seed_entries.to_vec())
+                        .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
                         .unwrap();
                     runner.update_commitment(
                         Hash::from_bytes(compute_res.computeId.to_be_bytes()),
