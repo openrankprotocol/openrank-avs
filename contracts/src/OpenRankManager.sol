@@ -34,19 +34,50 @@ contract OpenRankManager {
         uint256 timestamp;
     }
 
-    uint64 public constant CHALLENGE_WINDOW = 60;
-    uint64 public constant RXP_WINDOW = 60;
-    uint256 public constant FEE = 100;
-    uint256 public constant STAKE = 100;
+    struct BatchComputeRequest {
+        address user;
+        uint256 id;
+        bytes32 jobDescriptionId;
+        uint256 timestamp;
+    }
+
+    struct BatchComputeResult {
+        address computer;
+        uint256 computeId;
+        bytes32 commitment;
+        bytes32 resultsId;
+        uint256 timestamp;
+    }
+
+    struct BatchChallenge {
+        address challenger;
+        uint256 computeId;
+        uint256 subJobId;
+        uint256 timestamp;
+    }
+
+    uint64 public CHALLENGE_WINDOW = 60;
+    uint64 public RXP_WINDOW = 60;
+    uint256 public FEE = 100;
+    uint256 public STAKE = 100;
+
+    address public owner;
 
     uint256 public idCounter;
-    mapping(address => bool) whitelistedComputers;
-    mapping(address => bool) whitelistedChallengers;
-    mapping(address => bool) whitelistedUsers;
+
+    mapping(address => bool) allowlistedComputers;
+    mapping(address => bool) allowlistedChallengers;
+    mapping(address => bool) allowlistedUsers;
+
     mapping(uint256 => ComputeRequest) computeRequests;
     mapping(uint256 => ComputeResult) computeResults;
     mapping(uint256 => Challenge) challenges;
-    mapping(uint256 => bool) finalizedJobs;
+    mapping(uint256 => bool) jobsFinalized;
+
+    mapping(uint256 => BatchComputeRequest) batchComputeRequests;
+    mapping(uint256 => BatchComputeResult) batchComputeResults;
+    mapping(uint256 => BatchChallenge) batchChallenges;
+    mapping(uint256 => bool) batchJobsFinalized;
 
     event ComputeRequestEvent(
         uint256 indexed computeId,
@@ -60,6 +91,25 @@ contract OpenRankManager {
     );
     event ChallengeEvent(uint256 indexed computeId);
     event JobFinalized(uint256 indexed computeId);
+    event BatchComputeRequestEvent(
+        uint256 indexed computeId,
+        bytes32 jobDescriptionId
+    );
+    event BatchComputeResultEvent(
+        uint256 indexed computeId,
+        bytes32 commitment,
+        bytes32 resultsId
+    );
+    event BatchChallengeEvent(uint256 indexed computeId, uint256 subJobId);
+    event BatchJobFinalized(uint256 indexed computeId);
+
+    modifier onlyOwner() {
+        require(
+            msg.sender == owner,
+            "Only owner allowed to call this function"
+        );
+        _;
+    }
 
     constructor(
         address[] memory computers,
@@ -69,23 +119,29 @@ contract OpenRankManager {
         idCounter = 1;
 
         for (uint256 i = 0; i < computers.length; i++) {
-            whitelistedComputers[computers[i]] = true;
+            allowlistedComputers[computers[i]] = true;
         }
 
         for (uint256 i = 0; i < challengers.length; i++) {
-            whitelistedChallengers[challengers[i]] = true;
+            allowlistedChallengers[challengers[i]] = true;
         }
 
         for (uint256 i = 0; i < users.length; i++) {
-            whitelistedUsers[users[i]] = true;
+            allowlistedUsers[users[i]] = true;
         }
+
+        owner = msg.sender;
     }
+
+    // ---------------------------------------------------------------
+    // Singular Jobs
+    // ---------------------------------------------------------------
 
     function submitComputeRequest(
         bytes32 trustId,
         bytes32 seedId
     ) external payable returns (uint256 computeId) {
-        if (!whitelistedUsers[msg.sender]) {
+        if (!allowlistedUsers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
         if (msg.value != FEE) {
@@ -111,7 +167,7 @@ contract OpenRankManager {
         bytes32 commitment,
         bytes32 scoresId
     ) external payable returns (bool) {
-        if (!whitelistedComputers[msg.sender]) {
+        if (!allowlistedComputers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
         if (computeRequests[computeId].id == 0) {
@@ -141,7 +197,7 @@ contract OpenRankManager {
     function submitChallenge(
         uint256 computeId
     ) external payable returns (bool) {
-        if (!whitelistedChallengers[msg.sender]) {
+        if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
         if (computeRequests[computeId].id == 0) {
@@ -163,7 +219,7 @@ contract OpenRankManager {
             challenges[computeId] = challenge;
 
             payable(challenge.challenger).transfer(FEE + STAKE);
-            finalizedJobs[computeId] = true;
+            jobsFinalized[computeId] = true;
 
             emit ChallengeEvent(computeId);
             emit JobFinalized(computeId);
@@ -172,7 +228,7 @@ contract OpenRankManager {
     }
 
     function finalizeJob(uint256 computeId) external returns (bool) {
-        if (finalizedJobs[computeId]) {
+        if (jobsFinalized[computeId]) {
             revert JobAlreadyFinalized();
         }
         if (computeResults[computeId].computeId == 0) {
@@ -186,7 +242,7 @@ contract OpenRankManager {
             challenges[computeId].challenger == address(0x0)
         ) {
             payable(computeResults[computeId].computer).transfer(FEE + STAKE);
-            finalizedJobs[computeId] = true;
+            jobsFinalized[computeId] = true;
 
             emit JobFinalized(computeId);
 
@@ -194,5 +250,147 @@ contract OpenRankManager {
         } else {
             revert CannotFinalizeJob();
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Batched Jobs
+    // ---------------------------------------------------------------
+
+    function submitBatchComputeRequest(
+        bytes32 jobDescriptionId
+    ) external payable returns (uint256 computeId) {
+        if (!allowlistedUsers[msg.sender]) {
+            revert CallerNotWhitelisted();
+        }
+        if (msg.value != FEE) {
+            revert InvalidFee();
+        }
+        BatchComputeRequest memory computeRequest = BatchComputeRequest({
+            user: msg.sender,
+            id: idCounter,
+            jobDescriptionId: jobDescriptionId,
+            timestamp: block.timestamp
+        });
+        batchComputeRequests[idCounter] = computeRequest;
+
+        emit BatchComputeRequestEvent(idCounter, jobDescriptionId);
+
+        computeId = idCounter;
+        idCounter += 1;
+    }
+
+    function submitBatchComputeResult(
+        uint256 computeId,
+        bytes32 commitment,
+        bytes32 resultsId
+    ) external payable returns (bool) {
+        if (!allowlistedComputers[msg.sender]) {
+            revert CallerNotWhitelisted();
+        }
+        if (batchComputeRequests[computeId].id == 0) {
+            revert ComputeRequestNotFound();
+        }
+        if (batchComputeResults[computeId].computeId != 0) {
+            revert ComputeResultAlreadySubmitted();
+        }
+        if (msg.value != STAKE) {
+            revert InvalidStake();
+        }
+
+        BatchComputeResult memory computeResult = BatchComputeResult({
+            computer: payable(msg.sender),
+            computeId: computeId,
+            commitment: commitment,
+            resultsId: resultsId,
+            timestamp: block.timestamp
+        });
+        batchComputeResults[computeId] = computeResult;
+
+        emit BatchComputeResultEvent(computeId, commitment, resultsId);
+
+        return true;
+    }
+
+    function submitBatchChallenge(
+        uint256 computeId,
+        uint256 subJobId
+    ) external payable returns (bool) {
+        if (!allowlistedChallengers[msg.sender]) {
+            revert CallerNotWhitelisted();
+        }
+        if (batchComputeRequests[computeId].id == 0) {
+            revert ComputeRequestNotFound();
+        }
+        if (batchComputeResults[computeId].computeId == 0) {
+            revert ComputeResultNotFound();
+        }
+
+        uint256 computeDiff = block.timestamp -
+            batchComputeResults[computeId].timestamp;
+        if (computeDiff > CHALLENGE_WINDOW) {
+            revert ChallengePeriodExpired();
+        } else {
+            BatchChallenge memory challenge = BatchChallenge({
+                challenger: payable(msg.sender),
+                computeId: computeId,
+                subJobId: subJobId,
+                timestamp: block.timestamp
+            });
+            batchChallenges[computeId] = challenge;
+
+            payable(challenge.challenger).transfer(FEE + STAKE);
+            batchJobsFinalized[computeId] = true;
+
+            emit BatchChallengeEvent(computeId, subJobId);
+            emit BatchJobFinalized(computeId);
+            return true;
+        }
+    }
+
+    function finalizeBatchJob(uint256 computeId) external returns (bool) {
+        if (batchJobsFinalized[computeId]) {
+            revert JobAlreadyFinalized();
+        }
+        if (batchComputeResults[computeId].computeId == 0) {
+            revert ComputeResultNotFound();
+        }
+
+        uint256 computeDiff = block.timestamp -
+            batchComputeResults[computeId].timestamp;
+        if (
+            computeDiff > CHALLENGE_WINDOW &&
+            batchChallenges[computeId].challenger == address(0x0)
+        ) {
+            payable(batchComputeResults[computeId].computer).transfer(
+                FEE + STAKE
+            );
+            batchJobsFinalized[computeId] = true;
+
+            emit BatchJobFinalized(computeId);
+
+            return true;
+        } else {
+            revert CannotFinalizeJob();
+        }
+    }
+
+    // ---------------------------------------------------------------
+    // Setters
+    // ---------------------------------------------------------------
+
+    function updateChallengeWindow(uint64 challengeWindow) public onlyOwner {
+        CHALLENGE_WINDOW = challengeWindow;
+    }
+
+    function updateRxPWindow(uint64 rxpWindow) public onlyOwner {
+        RXP_WINDOW = rxpWindow;
+    }
+
+    function updateFee(uint256 fee) public onlyOwner {
+        FEE = fee;
+    }
+
+    function updateStake(uint256 stake) public onlyOwner {
+        STAKE = stake;
     }
 }

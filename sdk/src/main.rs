@@ -35,12 +35,13 @@ struct Args {
     method: Method,
 }
 
+const BUCKET_NAME: &str = "openrank-data-dev";
+
 #[tokio::main]
 async fn main() -> Result<(), AwsError> {
     dotenv().ok();
     let cli = Args::parse();
 
-    let bucket_name = std::env::var("BUCKET_NAME").expect("BUCKET_NAME must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
@@ -74,7 +75,7 @@ async fn main() -> Result<(), AwsError> {
 
             client
                 .put_object()
-                .bucket(bucket_name)
+                .bucket(BUCKET_NAME)
                 .key(format!("trust/{}", hex::encode(hash.clone())))
                 .body(body)
                 .send()
@@ -99,7 +100,7 @@ async fn main() -> Result<(), AwsError> {
 
             client
                 .put_object()
-                .bucket(bucket_name)
+                .bucket(BUCKET_NAME)
                 .key(format!("seed/{}", hex::encode(hash.clone())))
                 .body(body)
                 .send()
@@ -110,7 +111,7 @@ async fn main() -> Result<(), AwsError> {
             let mut file = File::create(path).unwrap();
             let mut res = client
                 .get_object()
-                .bucket(bucket_name)
+                .bucket(BUCKET_NAME)
                 .key(format!("trust/{}", trust_id))
                 .send()
                 .await?;
@@ -122,7 +123,7 @@ async fn main() -> Result<(), AwsError> {
             let mut file = File::create(path).unwrap();
             let mut res = client
                 .get_object()
-                .bucket(bucket_name)
+                .bucket(BUCKET_NAME)
                 .key(format!("seed/{}", seed_id))
                 .send()
                 .await?;
@@ -134,7 +135,7 @@ async fn main() -> Result<(), AwsError> {
             let mut file = File::create(path).unwrap();
             let mut res = client
                 .get_object()
-                .bucket(bucket_name)
+                .bucket(BUCKET_NAME)
                 .key(format!("scores/{}", scores_id))
                 .send()
                 .await?;
