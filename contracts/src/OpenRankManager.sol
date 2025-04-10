@@ -44,7 +44,7 @@ contract OpenRankManager {
     struct BatchComputeResult {
         address computer;
         uint256 computeId;
-        bytes32 commitment;
+        bytes32 metaCommitment;
         bytes32 resultsId;
         uint256 timestamp;
     }
@@ -111,24 +111,12 @@ contract OpenRankManager {
         _;
     }
 
-    constructor(
-        address[] memory computers,
-        address[] memory challengers,
-        address[] memory users
-    ) {
+    constructor() {
         idCounter = 1;
 
-        for (uint256 i = 0; i < computers.length; i++) {
-            allowlistedComputers[computers[i]] = true;
-        }
-
-        for (uint256 i = 0; i < challengers.length; i++) {
-            allowlistedChallengers[challengers[i]] = true;
-        }
-
-        for (uint256 i = 0; i < users.length; i++) {
-            allowlistedUsers[users[i]] = true;
-        }
+        allowlistedComputers[msg.sender] = true;
+        allowlistedChallengers[msg.sender] = true;
+        allowlistedUsers[msg.sender] = true;
 
         owner = msg.sender;
     }
@@ -281,7 +269,7 @@ contract OpenRankManager {
 
     function submitBatchComputeResult(
         uint256 computeId,
-        bytes32 commitment,
+        bytes32 metaCommitment,
         bytes32 resultsId
     ) external payable returns (bool) {
         if (!allowlistedComputers[msg.sender]) {
@@ -300,13 +288,13 @@ contract OpenRankManager {
         BatchComputeResult memory computeResult = BatchComputeResult({
             computer: payable(msg.sender),
             computeId: computeId,
-            commitment: commitment,
+            metaCommitment: metaCommitment,
             resultsId: resultsId,
             timestamp: block.timestamp
         });
         batchComputeResults[computeId] = computeResult;
 
-        emit BatchComputeResultEvent(computeId, commitment, resultsId);
+        emit BatchComputeResultEvent(computeId, metaCommitment, resultsId);
 
         return true;
     }

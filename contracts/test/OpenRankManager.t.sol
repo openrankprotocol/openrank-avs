@@ -14,36 +14,15 @@ contract OpenRankManagerTest is Test {
 
     OpenRankManager public opManager;
 
-    address[] computers;
-    address[] challengers;
-    address[] users;
-
     function setUp() public {
-        computers = new address[](1);
-        computers[0] = vm.addr(0x01);
-
-        challengers = new address[](1);
-        challengers[0] = vm.addr(0x02);
-
-        users = new address[](1);
-        users[0] = vm.addr(0x03);
-
-        vm.deal(computers[0], 1 ether);
-        vm.deal(challengers[0], 1 ether);
-        vm.deal(users[0], 1 ether);
-
-        opManager = new OpenRankManager(computers, challengers, users);
+        opManager = new OpenRankManager();
     }
 
     function testCorrectCompute() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitComputeRequest{value: FEE}(
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
@@ -52,45 +31,31 @@ contract OpenRankManagerTest is Test {
 
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeJob(jobId);
-
-        vm.stopPrank();
     }
 
     function testChallenge() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitComputeRequest{value: FEE}(
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
 
-        uint256 balanceBefore = challengers[0].balance;
-
-        vm.startPrank(challengers[0]);
+        uint256 balanceBefore = address(this).balance;
         opManager.submitChallenge(jobId);
-        vm.stopPrank();
-
-        uint256 balanceAfter = challengers[0].balance;
+        uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
     }
 
     function testChallengeAfterFinalizedJob() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitComputeRequest{value: FEE}(
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
 
-        vm.startPrank(computers[0]);
         opManager.submitComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
@@ -100,56 +65,38 @@ contract OpenRankManagerTest is Test {
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeJob(jobId);
 
-        vm.stopPrank();
-
         // Attempt to raise a challenge after challenge window has expired
         vm.expectRevert(ChallengePeriodExpired.selector);
-        vm.startPrank(challengers[0]);
         opManager.submitChallenge(jobId);
-        vm.stopPrank();
     }
 
     function testFinalizeJobAfterChallenge() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitComputeRequest{value: FEE}(
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
 
-        uint256 balanceBefore = challengers[0].balance;
-
-        vm.startPrank(challengers[0]);
+        uint256 balanceBefore = address(this).balance;
         opManager.submitChallenge(jobId);
-        vm.stopPrank();
 
-        uint256 balanceAfter = challengers[0].balance;
+        uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
 
         // Attempt to finalize job
         vm.expectRevert(JobAlreadyFinalized.selector);
-        vm.startPrank(computers[0]);
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeJob(jobId);
-        vm.stopPrank();
     }
 
     function testBatchCorrectCompute() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitBatchComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
@@ -158,43 +105,29 @@ contract OpenRankManagerTest is Test {
 
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeBatchJob(jobId);
-
-        vm.stopPrank();
     }
 
     function testBatchChallenge() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitBatchComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
 
-        uint256 balanceBefore = challengers[0].balance;
-
-        vm.startPrank(challengers[0]);
+        uint256 balanceBefore = address(this).balance;
         opManager.submitBatchChallenge(jobId, 0);
-        vm.stopPrank();
 
-        uint256 balanceAfter = challengers[0].balance;
+        uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
     }
 
     function testBatchChallengeAfterFinalizedJob() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitBatchComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
@@ -204,44 +137,32 @@ contract OpenRankManagerTest is Test {
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeBatchJob(jobId);
 
-        vm.stopPrank();
-
         // Attempt to raise a challenge after challenge window has expired
         vm.expectRevert(ChallengePeriodExpired.selector);
-        vm.startPrank(challengers[0]);
         opManager.submitBatchChallenge(jobId, 0);
-        vm.stopPrank();
     }
 
     function testBatchFinalizeJobAfterChallenge() public {
-        vm.startPrank(users[0]);
         uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
             bytes32(0)
         );
-        vm.stopPrank();
-
-        vm.startPrank(computers[0]);
         opManager.submitBatchComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
-        vm.stopPrank();
 
-        uint256 balanceBefore = challengers[0].balance;
-
-        vm.startPrank(challengers[0]);
+        uint256 balanceBefore = address(this).balance;
         opManager.submitBatchChallenge(jobId, 0);
-        vm.stopPrank();
 
-        uint256 balanceAfter = challengers[0].balance;
+        uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
 
         // Attempt to finalize job
         vm.expectRevert(JobAlreadyFinalized.selector);
-        vm.startPrank(computers[0]);
         vm.warp(CHALLENGE_WINDOW + 2);
         opManager.finalizeBatchJob(jobId);
-        vm.stopPrank();
     }
+
+    receive() external payable {}
 }

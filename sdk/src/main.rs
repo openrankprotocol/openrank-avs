@@ -1,6 +1,14 @@
+mod actions;
 mod sol;
 
-use alloy::hex::{self, FromHex};
+use std::collections::HashMap;
+use std::fs::read_dir;
+
+use actions::{
+    download_meta, download_scores, download_seed, download_trust, upload_meta, upload_seed,
+    upload_trust,
+};
+use alloy::hex::FromHex;
 use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::ProviderBuilder;
 use alloy::rpc::client::RpcClient;
@@ -8,24 +16,46 @@ use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::MnemonicBuilder;
 use alloy::transports::http::reqwest::Url;
 use aws_config::from_env;
-use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::{Client, Error as AwsError};
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
-use sha3::{Digest, Keccak256};
+use serde::{Deserialize, Serialize};
 use sol::OpenRankManager;
-use std::fs::File;
-use std::io::{Read, Write};
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
 enum Method {
-    UploadTrust { path: String },
-    UploadSeed { path: String },
-    DownloadTrust { trust_id: String, path: String },
-    DownloadSeed { seed_id: String, path: String },
-    DownloadScores { scores_id: String, path: String },
-    RequestCompute { trust_id: String, seed_id: String },
+    UploadTrust {
+        path: String,
+    },
+    UploadSeed {
+        path: String,
+    },
+    DownloadTrust {
+        trust_id: String,
+        path: String,
+    },
+    DownloadSeed {
+        seed_id: String,
+        path: String,
+    },
+    DownloadScores {
+        scores_id: String,
+        path: String,
+    },
+    RequestCompute {
+        trust_id: String,
+        seed_id: String,
+    },
+
+    // Batch jobs
+    BatchDownloadScores {
+        results_id: String,
+    },
+    BatchRequestCompute {
+        trust_folder_path: String,
+        seed_folder_path: String,
+    },
 }
 
 #[derive(Parser, Debug)]
@@ -36,6 +66,29 @@ struct Args {
 }
 
 const BUCKET_NAME: &str = "openrank-data-dev";
+
+#[derive(Serialize, Deserialize)]
+struct JobDescription {
+    alpha: f32,
+    trust_id: String,
+    seed_id: String,
+}
+
+impl JobDescription {
+    pub fn default_with(trust_id: String, seed_id: String) -> Self {
+        Self {
+            alpha: 0.5,
+            trust_id,
+            seed_id,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct JobResult {
+    scores_id: String,
+    commitment: String,
+}
 
 #[tokio::main]
 async fn main() -> Result<(), AwsError> {
@@ -58,91 +111,17 @@ async fn main() -> Result<(), AwsError> {
 
     match cli.method {
         Method::UploadTrust { path } => {
-            let mut f = File::open(path.clone()).unwrap();
-            let mut file_bytes = Vec::new();
-            f.read_to_end(&mut file_bytes).unwrap();
-            let body = ByteStream::from(file_bytes.clone());
-
-            let mut hasher = Keccak256::new();
-            hasher.write_all(&mut file_bytes).unwrap();
-            let hash = hasher.finalize().to_vec();
-
-            let mut rdr = csv::Reader::from_reader(f);
-            for result in rdr.records() {
-                let record: csv::StringRecord = result.unwrap();
-                let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
-            }
-
-            client
-                .put_object()
-                .bucket(BUCKET_NAME)
-                .key(format!("trust/{}", hex::encode(hash.clone())))
-                .body(body)
-                .send()
-                .await?;
-            println!("Hash:({})", hex::encode(hash.clone()));
+            let hash = upload_trust(client.clone(), path).await?;
+            println!("Hash:({})", hash);
         }
         Method::UploadSeed { path } => {
-            let mut f = File::open(path.clone()).unwrap();
-            let mut file_bytes = Vec::new();
-            f.read_to_end(&mut file_bytes).unwrap();
-            let body = ByteStream::from(file_bytes.clone());
-
-            let mut hasher = Keccak256::new();
-            hasher.write_all(&mut file_bytes).unwrap();
-            let hash = hasher.finalize().to_vec();
-
-            let mut rdr = csv::Reader::from_reader(f);
-            for result in rdr.records() {
-                let record: csv::StringRecord = result.unwrap();
-                let (_, _): (String, f32) = record.deserialize(None).unwrap();
-            }
-
-            client
-                .put_object()
-                .bucket(BUCKET_NAME)
-                .key(format!("seed/{}", hex::encode(hash.clone())))
-                .body(body)
-                .send()
-                .await?;
-            println!("Hash:({})", hex::encode(hash.clone()));
+            let hash = upload_seed(client.clone(), path).await?;
+            println!("Hash:({})", hash);
         }
-        Method::DownloadTrust { trust_id, path } => {
-            let mut file = File::create(path).unwrap();
-            let mut res = client
-                .get_object()
-                .bucket(BUCKET_NAME)
-                .key(format!("trust/{}", trust_id))
-                .send()
-                .await?;
-            while let Some(bytes) = res.body.next().await {
-                file.write(&bytes.unwrap()).unwrap();
-            }
-        }
-        Method::DownloadSeed { seed_id, path } => {
-            let mut file = File::create(path).unwrap();
-            let mut res = client
-                .get_object()
-                .bucket(BUCKET_NAME)
-                .key(format!("seed/{}", seed_id))
-                .send()
-                .await?;
-            while let Some(bytes) = res.body.next().await {
-                file.write(&bytes.unwrap()).unwrap();
-            }
-        }
+        Method::DownloadTrust { trust_id, path } => download_trust(client, trust_id, path).await?,
+        Method::DownloadSeed { seed_id, path } => download_seed(client, seed_id, path).await?,
         Method::DownloadScores { scores_id, path } => {
-            let mut file = File::create(path).unwrap();
-            let mut res = client
-                .get_object()
-                .bucket(BUCKET_NAME)
-                .key(format!("scores/{}", scores_id))
-                .send()
-                .await?;
-            println!("{:?}", res);
-            while let Some(bytes) = res.body.next().await {
-                file.write(&bytes.unwrap()).unwrap();
-            }
+            download_scores(client, scores_id, path).await?
         }
         Method::RequestCompute { trust_id, seed_id } => {
             let provider = ProviderBuilder::new()
@@ -162,6 +141,73 @@ async fn main() -> Result<(), AwsError> {
                 .send()
                 .await
                 .unwrap();
+            println!("Tx Hash: {}", res.watch().await.unwrap());
+        }
+        Method::BatchDownloadScores { results_id } => {
+            let job_results: Vec<JobResult> =
+                download_meta(client.clone(), results_id).await.unwrap();
+            for job_result in job_results {
+                download_scores(
+                    client.clone(),
+                    job_result.scores_id.clone(),
+                    format!("./scores/{}", job_result.scores_id),
+                )
+                .await
+                .unwrap();
+            }
+        }
+        Method::BatchRequestCompute {
+            trust_folder_path,
+            seed_folder_path,
+        } => {
+            let trust_paths = read_dir(trust_folder_path).unwrap();
+            let mut trust_map = HashMap::new();
+            for path in trust_paths {
+                let path = path.unwrap().path();
+                let file_name = path.file_name().unwrap().to_str().unwrap();
+                let res = upload_trust(client.clone(), file_name.to_string())
+                    .await
+                    .unwrap();
+                trust_map.insert(file_name.to_string(), res);
+            }
+
+            let seed_paths = read_dir(seed_folder_path).unwrap();
+            let mut seed_map = HashMap::new();
+            for path in seed_paths {
+                let path = path.unwrap().path();
+                let file_name = path.file_name().unwrap().to_str().unwrap();
+                let res = upload_seed(client.clone(), file_name.to_string())
+                    .await
+                    .unwrap();
+                seed_map.insert(file_name.to_string(), res);
+            }
+
+            let mut jds = Vec::new();
+            for (trust_file, trust_id) in trust_map {
+                let seed_id = seed_map.get(&trust_file).unwrap();
+                let job_description = JobDescription::default_with(trust_id, seed_id.clone());
+                jds.push(job_description);
+            }
+
+            let meta_id = upload_meta(client, jds).await?;
+
+            let provider = ProviderBuilder::new()
+                .wallet(wallet)
+                .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
+
+            let contract =
+                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
+
+            let meta_id_bytes = FixedBytes::from_hex(meta_id.clone()).unwrap();
+
+            let required_fee = contract.FEE().call().await.unwrap();
+            let res = contract
+                .submitBatchComputeRequest(meta_id_bytes)
+                .value(required_fee._0)
+                .send()
+                .await
+                .unwrap();
+            println!("Meta Job ID: {}", meta_id);
             println!("Tx Hash: {}", res.watch().await.unwrap());
         }
     };
