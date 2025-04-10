@@ -14,7 +14,7 @@ const PRE_TRUST_WEIGHT: f32 = 0.5;
 ///
 /// If the absolute difference between the current score and the next score is
 /// less than `DELTA`, the score has converged.
-const DELTA: f32 = 0.001;
+const DELTA: f32 = 0.01;
 
 fn find_reachable_peers(
     lt: &BTreeMap<u64, OutboundLocalTrust>,
@@ -140,8 +140,8 @@ pub fn positive_run(
         // Normalise n+2 scores
         let n_plus_2_scores = normalise_scores(&n_plus_2_scores);
         // Check for convergence.
-        let (is_converged, unconverged_count) = is_converged(&n_plus_1_scores, &n_plus_2_scores);
-        info!("ITER: {}, UNCONVERGED: {}", i, unconverged_count);
+        let is_converged = is_converged(&n_plus_1_scores, &n_plus_2_scores);
+        info!("ITER: {}, CONVERGED: {}", i, is_converged);
         if is_converged {
             // Return previous iteration, since the scores are converged.
             scores = n_plus_1_scores;
@@ -163,48 +163,20 @@ pub fn positive_run(
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
 /// It returns `true` if the scores have converged and `false` otherwise.
-pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32>) -> (bool, u32) {
+pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32>) -> bool {
     // Iterate over the scores and check if they have converged.
-    scores
+    let total_delta = scores
         .par_iter()
         .fold(
-            || (true, 0),
-            |(is_converged, count), (i, v)| {
+            || 0.0,
+            |sum, (i, v)| {
                 // Get the next score of the node.
                 let next_score = next_scores.get(i).unwrap_or(&0.0);
-                // Check if the score has converged.
-                let curr_converged = (next_score - v).abs() < DELTA;
-                let new_count = if !curr_converged { count + 1 } else { count };
-                (is_converged & curr_converged, new_count)
+                (next_score - v).abs() + sum
             },
         )
-        .reduce(|| (true, 0), |(x, i1), (b, i2)| (x & b, i1 + i2))
-}
-
-pub fn is_converged_verifier(
-    scores: &BTreeMap<u64, f32>,
-    next_scores: &BTreeMap<u64, f32>,
-) -> (bool, u32) {
-    // Iterate over the scores and check if they have converged.
-    scores
-        .par_iter()
-        .fold(
-            || (true, 0),
-            |(is_converged, count), (i, v)| {
-                // Get the next score of the node.
-                let next_score = next_scores.get(i).unwrap_or(&0.0);
-                // Check if the score has converged.
-                let curr_converged = (next_score - v).abs() <= DELTA;
-                let new_count = if !curr_converged {
-                    println!("{}, {}", (next_score - v).abs(), DELTA);
-                    count + 1
-                } else {
-                    count
-                };
-                (is_converged & curr_converged, new_count)
-            },
-        )
-        .reduce(|| (true, 0), |(x, i1), (b, i2)| (x & b, i1 + i2))
+        .reduce(|| 0.0, |sum_a, sum_b| sum_a + sum_b);
+    total_delta <= DELTA
 }
 
 /// It performs a single iteration of the positive run EigenTrust algorithm on the given local trust matrix (`lt`),
@@ -239,16 +211,12 @@ pub fn convergence_check(
     let next_scores = normalise_scores(&next_scores);
 
     // Check if the scores have converged
-    let (is_converged, count) = is_converged_verifier(scores, &next_scores);
-    if !is_converged {
-        info!(
-            "CONVERGENCE_FAILED: {:?} INVALID_COUNT: {}",
-            start.elapsed(),
-            count
-        );
-    } else {
-        info!("CONVERGENCE_SUCCESSFUL: {:?}", start.elapsed());
-    }
+    let is_converged = is_converged(scores, &next_scores);
+    info!(
+        "CONVERGENCE_RESULT: {:?}, TIME: {:?}",
+        is_converged,
+        start.elapsed(),
+    );
     is_converged
 }
 

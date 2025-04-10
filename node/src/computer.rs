@@ -198,7 +198,7 @@ async fn handle_compute_request<PH: Provider>(
     info!("Upload scores complete...");
 
     let elapsed = start.elapsed();
-    println!("{:?}", elapsed);
+    info!("Total compute time: {:?}", elapsed);
 
     info!("Posting commitment on-chain. Calling: 'submitComputeResult'");
     let required_stake = contract.STAKE().call().await.unwrap();
@@ -368,7 +368,7 @@ async fn handle_meta_compute_request<PH: Provider>(
     );
 
     let elapsed = start.elapsed();
-    println!("{:?}", elapsed);
+    info!("Total compute time: {:?}", elapsed);
 }
 
 async fn finalize_job<PH: Provider>(
