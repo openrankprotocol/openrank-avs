@@ -1,5 +1,6 @@
 use crate::format_hex;
 use alloy::hex;
+use alloy_rlp::Encodable;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
@@ -19,7 +20,13 @@ pub struct Hash(#[serde(with = "hex")] [u8; 32]);
 
 impl Hash {
     pub fn from_slice(slice: &[u8]) -> Self {
-        Self(<[u8; 32]>::try_from(slice).unwrap())
+        let mut bytes = [0; 32];
+        if slice.len() > 32 {
+            bytes.copy_from_slice(&slice[..32]);
+        } else {
+            bytes[..slice.len()].copy_from_slice(&slice);
+        }
+        Self(<[u8; 32]>::try_from(bytes).unwrap())
     }
 
     pub fn from_bytes(bytes: [u8; 32]) -> Self {

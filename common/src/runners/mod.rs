@@ -248,6 +248,61 @@ impl BaseRunner {
         Ok(())
     }
 
+    pub fn update_trust_map(
+        &mut self,
+        domain: Domain,
+        trust_entries: Vec<TrustEntry>,
+    ) -> Result<(), Error> {
+        let domain_indices = self
+            .indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let rev_domain_indices = self
+            .rev_indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
+        let count = self
+            .count
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::CountNotFound(domain.to_hash()))?;
+        let lt = self
+            .local_trust
+            .get_mut(&domain.trust_namespace())
+            .ok_or::<Error>(Error::LocalTrustNotFound(domain.trust_namespace()))?;
+        for entry in trust_entries {
+            let from_index = if let Some(i) = domain_indices.get(entry.from()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.from().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.from().clone());
+                *count += 1;
+                curr_count
+            };
+            let to_index = if let Some(i) = domain_indices.get(entry.to()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.to().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.to().clone());
+                *count += 1;
+                curr_count
+            };
+
+            let from_map = lt.entry(from_index).or_insert(OutboundLocalTrust::new());
+            let is_zero = entry.value() == &0.0;
+            let exists = from_map.contains_key(&to_index);
+            if is_zero && exists {
+                from_map.remove(&to_index);
+            } else if !is_zero {
+                from_map.insert(to_index, *entry.value());
+            }
+        }
+        info!("LT_MAP_UPDATE, DOMAIN: {}", domain.to_hash(),);
+
+        Ok(())
+    }
+
     pub fn update_seed(
         &mut self,
         domain: Domain,
@@ -300,6 +355,50 @@ impl BaseRunner {
             domain.to_hash(),
             st_root,
         );
+
+        Ok(())
+    }
+
+    pub fn update_seed_map(
+        &mut self,
+        domain: Domain,
+        seed_entries: Vec<ScoreEntry>,
+    ) -> Result<(), Error> {
+        let domain_indices = self
+            .indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::IndicesNotFound(domain.to_hash()))?;
+        let rev_domain_indices = self
+            .rev_indices
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::ReverseIndicesNotFound(domain.to_hash()))?;
+        let count = self
+            .count
+            .get_mut(&domain.to_hash())
+            .ok_or::<Error>(Error::CountNotFound(domain.to_hash()))?;
+        let seed = self
+            .seed_trust
+            .get_mut(&domain.seed_namespace())
+            .ok_or::<Error>(Error::SeedTrustNotFound(domain.seed_namespace()))?;
+        for entry in seed_entries {
+            let index = if let Some(i) = domain_indices.get(entry.id()) {
+                *i
+            } else {
+                let curr_count = *count;
+                domain_indices.insert(entry.id().clone(), curr_count);
+                rev_domain_indices.insert(curr_count, entry.id().clone());
+                *count += 1;
+                curr_count
+            };
+            let is_zero = entry.value() == &0.0;
+            let exists = seed.contains_key(&index);
+            if is_zero && exists {
+                seed.remove(&index);
+            } else if !is_zero {
+                seed.insert(index, *entry.value());
+            }
+        }
+        info!("ST_MAP_UPDATE, DOMAIN: {}", domain.to_hash(),);
 
         Ok(())
     }

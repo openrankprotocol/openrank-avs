@@ -5,6 +5,7 @@ use crate::{
     Domain, DomainHash,
 };
 use getset::Getters;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use sha3::Keccak256;
 use std::collections::HashMap;
 use tracing::info;
@@ -46,6 +47,16 @@ impl ComputeRunner {
             .map_err(Error::Base)
     }
 
+    pub fn update_trust_map(
+        &mut self,
+        domain: Domain,
+        trust_entries: Vec<TrustEntry>,
+    ) -> Result<(), Error> {
+        self.base
+            .update_trust_map(domain, trust_entries)
+            .map_err(Error::Base)
+    }
+
     /// Update the state of trees for certain domain, with the given seed entries.
     pub fn update_seed(
         &mut self,
@@ -54,6 +65,16 @@ impl ComputeRunner {
     ) -> Result<(), Error> {
         self.base
             .update_seed(domain, seed_entries)
+            .map_err(Error::Base)
+    }
+
+    pub fn update_seed_map(
+        &mut self,
+        domain: Domain,
+        seed_entries: Vec<ScoreEntry>,
+    ) -> Result<(), Error> {
+        self.base
+            .update_seed_map(domain, seed_entries)
             .map_err(Error::Base)
     }
 
@@ -88,7 +109,7 @@ impl ComputeRunner {
             .get(&domain.to_hash())
             .ok_or(Error::ComputeResultsNotFound(domain.to_hash()))?;
         let score_hashes: Vec<Hash> = scores
-            .iter()
+            .par_iter()
             .map(|(_, x)| hash_leaf::<Keccak256>(x.to_be_bytes().to_vec()))
             .collect();
         let compute_tree =
