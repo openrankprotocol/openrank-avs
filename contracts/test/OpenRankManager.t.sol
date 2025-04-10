@@ -8,7 +8,7 @@ contract OpenRankManagerTest is Test {
     error ChallengePeriodExpired();
     error JobAlreadyFinalized();
 
-    uint256 constant CHALLENGE_WINDOW = 60;
+    uint256 constant CHALLENGE_WINDOW = 60 * 60;
     uint256 constant FEE = 100;
     uint256 constant STAKE = 100;
 
@@ -93,67 +93,67 @@ contract OpenRankManagerTest is Test {
         opManager.finalizeJob(jobId);
     }
 
-    function testBatchCorrectCompute() public {
-        uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
+    function testMetaCorrectCompute() public {
+        uint256 jobId = opManager.submitMetaComputeRequest{value: FEE}(
             bytes32(0)
         );
-        opManager.submitBatchComputeResult{value: STAKE}(
+        opManager.submitMetaComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
 
         vm.warp(CHALLENGE_WINDOW + 2);
-        opManager.finalizeBatchJob(jobId);
+        opManager.finalizeMetaJob(jobId);
     }
 
-    function testBatchChallenge() public {
-        uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
+    function testMetaChallenge() public {
+        uint256 jobId = opManager.submitMetaComputeRequest{value: FEE}(
             bytes32(0)
         );
-        opManager.submitBatchComputeResult{value: STAKE}(
+        opManager.submitMetaComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
 
         uint256 balanceBefore = address(this).balance;
-        opManager.submitBatchChallenge(jobId, 0);
+        opManager.submitMetaChallenge(jobId, 0);
 
         uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
     }
 
-    function testBatchChallengeAfterFinalizedJob() public {
-        uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
+    function testMetaChallengeAfterFinalizedJob() public {
+        uint256 jobId = opManager.submitMetaComputeRequest{value: FEE}(
             bytes32(0)
         );
-        opManager.submitBatchComputeResult{value: STAKE}(
+        opManager.submitMetaComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
 
         vm.warp(CHALLENGE_WINDOW + 2);
-        opManager.finalizeBatchJob(jobId);
+        opManager.finalizeMetaJob(jobId);
 
         // Attempt to raise a challenge after challenge window has expired
         vm.expectRevert(ChallengePeriodExpired.selector);
-        opManager.submitBatchChallenge(jobId, 0);
+        opManager.submitMetaChallenge(jobId, 0);
     }
 
-    function testBatchFinalizeJobAfterChallenge() public {
-        uint256 jobId = opManager.submitBatchComputeRequest{value: FEE}(
+    function testMetaFinalizeJobAfterChallenge() public {
+        uint256 jobId = opManager.submitMetaComputeRequest{value: FEE}(
             bytes32(0)
         );
-        opManager.submitBatchComputeResult{value: STAKE}(
+        opManager.submitMetaComputeResult{value: STAKE}(
             jobId,
             bytes32(0),
             bytes32(0)
         );
 
         uint256 balanceBefore = address(this).balance;
-        opManager.submitBatchChallenge(jobId, 0);
+        opManager.submitMetaChallenge(jobId, 0);
 
         uint256 balanceAfter = address(this).balance;
         assert(balanceBefore + STAKE + FEE == balanceAfter);
@@ -161,7 +161,7 @@ contract OpenRankManagerTest is Test {
         // Attempt to finalize job
         vm.expectRevert(JobAlreadyFinalized.selector);
         vm.warp(CHALLENGE_WINDOW + 2);
-        opManager.finalizeBatchJob(jobId);
+        opManager.finalizeMetaJob(jobId);
     }
 
     receive() external payable {}

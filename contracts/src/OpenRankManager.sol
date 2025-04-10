@@ -34,14 +34,14 @@ contract OpenRankManager {
         uint256 timestamp;
     }
 
-    struct BatchComputeRequest {
+    struct MetaComputeRequest {
         address user;
         uint256 id;
         bytes32 jobDescriptionId;
         uint256 timestamp;
     }
 
-    struct BatchComputeResult {
+    struct MetaComputeResult {
         address computer;
         uint256 computeId;
         bytes32 metaCommitment;
@@ -49,14 +49,14 @@ contract OpenRankManager {
         uint256 timestamp;
     }
 
-    struct BatchChallenge {
+    struct MetaChallenge {
         address challenger;
         uint256 computeId;
         uint256 subJobId;
         uint256 timestamp;
     }
 
-    uint64 public CHALLENGE_WINDOW = 60;
+    uint64 public CHALLENGE_WINDOW = 60 * 60; // 60 minutes
     uint64 public RXP_WINDOW = 60;
     uint256 public FEE = 100;
     uint256 public STAKE = 100;
@@ -74,10 +74,10 @@ contract OpenRankManager {
     mapping(uint256 => Challenge) challenges;
     mapping(uint256 => bool) jobsFinalized;
 
-    mapping(uint256 => BatchComputeRequest) batchComputeRequests;
-    mapping(uint256 => BatchComputeResult) batchComputeResults;
-    mapping(uint256 => BatchChallenge) batchChallenges;
-    mapping(uint256 => bool) batchJobsFinalized;
+    mapping(uint256 => MetaComputeRequest) metaComputeRequests;
+    mapping(uint256 => MetaComputeResult) metaComputeResults;
+    mapping(uint256 => MetaChallenge) metaChallenges;
+    mapping(uint256 => bool) metaJobsFinalized;
 
     event ComputeRequestEvent(
         uint256 indexed computeId,
@@ -91,17 +91,17 @@ contract OpenRankManager {
     );
     event ChallengeEvent(uint256 indexed computeId);
     event JobFinalized(uint256 indexed computeId);
-    event BatchComputeRequestEvent(
+    event MetaComputeRequestEvent(
         uint256 indexed computeId,
         bytes32 jobDescriptionId
     );
-    event BatchComputeResultEvent(
+    event MetaComputeResultEvent(
         uint256 indexed computeId,
         bytes32 commitment,
         bytes32 resultsId
     );
-    event BatchChallengeEvent(uint256 indexed computeId, uint256 subJobId);
-    event BatchJobFinalized(uint256 indexed computeId);
+    event MetaChallengeEvent(uint256 indexed computeId, uint256 subJobId);
+    event MetaJobFinalized(uint256 indexed computeId);
 
     modifier onlyOwner() {
         require(
@@ -241,10 +241,10 @@ contract OpenRankManager {
     }
 
     // ---------------------------------------------------------------
-    // Batched Jobs
+    // Metaed Jobs
     // ---------------------------------------------------------------
 
-    function submitBatchComputeRequest(
+    function submitMetaComputeRequest(
         bytes32 jobDescriptionId
     ) external payable returns (uint256 computeId) {
         if (!allowlistedUsers[msg.sender]) {
@@ -253,21 +253,21 @@ contract OpenRankManager {
         if (msg.value != FEE) {
             revert InvalidFee();
         }
-        BatchComputeRequest memory computeRequest = BatchComputeRequest({
+        MetaComputeRequest memory computeRequest = MetaComputeRequest({
             user: msg.sender,
             id: idCounter,
             jobDescriptionId: jobDescriptionId,
             timestamp: block.timestamp
         });
-        batchComputeRequests[idCounter] = computeRequest;
+        metaComputeRequests[idCounter] = computeRequest;
 
-        emit BatchComputeRequestEvent(idCounter, jobDescriptionId);
+        emit MetaComputeRequestEvent(idCounter, jobDescriptionId);
 
         computeId = idCounter;
         idCounter += 1;
     }
 
-    function submitBatchComputeResult(
+    function submitMetaComputeResult(
         uint256 computeId,
         bytes32 metaCommitment,
         bytes32 resultsId
@@ -275,86 +275,86 @@ contract OpenRankManager {
         if (!allowlistedComputers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
-        if (batchComputeRequests[computeId].id == 0) {
+        if (metaComputeRequests[computeId].id == 0) {
             revert ComputeRequestNotFound();
         }
-        if (batchComputeResults[computeId].computeId != 0) {
+        if (metaComputeResults[computeId].computeId != 0) {
             revert ComputeResultAlreadySubmitted();
         }
         if (msg.value != STAKE) {
             revert InvalidStake();
         }
 
-        BatchComputeResult memory computeResult = BatchComputeResult({
+        MetaComputeResult memory computeResult = MetaComputeResult({
             computer: payable(msg.sender),
             computeId: computeId,
             metaCommitment: metaCommitment,
             resultsId: resultsId,
             timestamp: block.timestamp
         });
-        batchComputeResults[computeId] = computeResult;
+        metaComputeResults[computeId] = computeResult;
 
-        emit BatchComputeResultEvent(computeId, metaCommitment, resultsId);
+        emit MetaComputeResultEvent(computeId, metaCommitment, resultsId);
 
         return true;
     }
 
-    function submitBatchChallenge(
+    function submitMetaChallenge(
         uint256 computeId,
         uint256 subJobId
     ) external payable returns (bool) {
         if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
-        if (batchComputeRequests[computeId].id == 0) {
+        if (metaComputeRequests[computeId].id == 0) {
             revert ComputeRequestNotFound();
         }
-        if (batchComputeResults[computeId].computeId == 0) {
+        if (metaComputeResults[computeId].computeId == 0) {
             revert ComputeResultNotFound();
         }
 
         uint256 computeDiff = block.timestamp -
-            batchComputeResults[computeId].timestamp;
+            metaComputeResults[computeId].timestamp;
         if (computeDiff > CHALLENGE_WINDOW) {
             revert ChallengePeriodExpired();
         } else {
-            BatchChallenge memory challenge = BatchChallenge({
+            MetaChallenge memory challenge = MetaChallenge({
                 challenger: payable(msg.sender),
                 computeId: computeId,
                 subJobId: subJobId,
                 timestamp: block.timestamp
             });
-            batchChallenges[computeId] = challenge;
+            metaChallenges[computeId] = challenge;
 
             payable(challenge.challenger).transfer(FEE + STAKE);
-            batchJobsFinalized[computeId] = true;
+            metaJobsFinalized[computeId] = true;
 
-            emit BatchChallengeEvent(computeId, subJobId);
-            emit BatchJobFinalized(computeId);
+            emit MetaChallengeEvent(computeId, subJobId);
+            emit MetaJobFinalized(computeId);
             return true;
         }
     }
 
-    function finalizeBatchJob(uint256 computeId) external returns (bool) {
-        if (batchJobsFinalized[computeId]) {
+    function finalizeMetaJob(uint256 computeId) external returns (bool) {
+        if (metaJobsFinalized[computeId]) {
             revert JobAlreadyFinalized();
         }
-        if (batchComputeResults[computeId].computeId == 0) {
+        if (metaComputeResults[computeId].computeId == 0) {
             revert ComputeResultNotFound();
         }
 
         uint256 computeDiff = block.timestamp -
-            batchComputeResults[computeId].timestamp;
+            metaComputeResults[computeId].timestamp;
         if (
             computeDiff > CHALLENGE_WINDOW &&
-            batchChallenges[computeId].challenger == address(0x0)
+            metaChallenges[computeId].challenger == address(0x0)
         ) {
-            payable(batchComputeResults[computeId].computer).transfer(
+            payable(metaComputeResults[computeId].computer).transfer(
                 FEE + STAKE
             );
-            batchJobsFinalized[computeId] = true;
+            metaJobsFinalized[computeId] = true;
 
-            emit BatchJobFinalized(computeId);
+            emit MetaJobFinalized(computeId);
 
             return true;
         } else {

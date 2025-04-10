@@ -1,6 +1,6 @@
 use crate::sol::OpenRankManager::{
-    BatchChallengeEvent, BatchComputeRequestEvent, BatchComputeResultEvent, BatchJobFinalized,
-    ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized,
+    ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
+    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -23,11 +23,17 @@ use sha3::Keccak256;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::time::Instant;
 use tokio::select;
 use tracing::{debug, error, info};
 
 use crate::sol::OpenRankManager::OpenRankManagerInstance;
+
+#[derive(Serialize, Deserialize)]
+struct JobDescription {
+    alpha: f32,
+    trust_id: String,
+    seed_id: String,
+}
 
 #[derive(Serialize, Deserialize)]
 struct JobResult {
@@ -213,30 +219,30 @@ async fn handle_compute_result<PH: Provider>(
     }
 }
 
-async fn handle_batch_compute_result<PH: Provider>(
+async fn handle_meta_compute_result<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
-    batch_compute_res: BatchComputeResultEvent,
+    meta_compute_res: MetaComputeResultEvent,
     log: Log,
-    batch_compute_request_map: &HashMap<Uint<256, 4>, ComputeRequestEvent>,
-    batch_challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
-    batch_finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
+    meta_compute_request_map: &HashMap<Uint<256, 4>, MetaComputeRequestEvent>,
+    meta_challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
+    meta_finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
     challenge_window: u64,
 ) {
     let meta_result: Vec<JobResult> =
-        download_meta(s3_client, batch_compute_res.resultsId.encode_hex())
+        download_meta(s3_client, meta_compute_res.resultsId.encode_hex())
             .await
             .unwrap();
 
     info!(
         "ComputeResultEvent: ComputeId({}), Commitment({:#}), ResultsId({:#})",
-        batch_compute_res.computeId, batch_compute_res.commitment, batch_compute_res.resultsId
+        meta_compute_res.computeId, meta_compute_res.commitment, meta_compute_res.resultsId
     );
     debug!("Log: {:?}", log);
 
-    let already_challenged = batch_challanged_jobs_map.contains_key(&batch_compute_res.computeId);
-    let already_finalized = batch_finalized_jobs_map.contains_key(&batch_compute_res.computeId);
+    let already_challenged = meta_challanged_jobs_map.contains_key(&meta_compute_res.computeId);
+    let already_finalized = meta_finalized_jobs_map.contains_key(&meta_compute_res.computeId);
 
     let block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Latest))
@@ -254,9 +260,14 @@ async fn handle_batch_compute_result<PH: Provider>(
         return;
     }
 
-    let compute_req = batch_compute_request_map
-        .get(&batch_compute_res.computeId)
+    let compute_req = meta_compute_request_map
+        .get(&meta_compute_res.computeId)
         .unwrap();
+
+    let job_description: Vec<JobDescription> =
+        download_meta(s3_client, compute_req.jobDescriptionId.encode_hex())
+            .await
+            .unwrap();
 
     let mut global_result = true;
     let mut sub_job_failed = 0;
@@ -264,31 +275,30 @@ async fn handle_batch_compute_result<PH: Provider>(
     for (i, compute_res) in meta_result.iter().enumerate() {
         info!("Downloading data...");
 
-        let trust_id_str = hex::encode(compute_req.trust_id.as_slice());
-        let seed_id_str = hex::encode(compute_req.seed_id.as_slice());
-        let scores_id_str = compute_res.scores_id.clone();
-        let mut trust_file = File::create(&format!("./trust/{}", trust_id_str)).unwrap();
-        let mut seed_file = File::create(&format!("./seed/{}", seed_id_str)).unwrap();
-        let mut scores_file = File::create(&format!("./scores/{}", scores_id_str)).unwrap();
+        let mut trust_file =
+            File::create(&format!("./trust/{}", job_description[i].trust_id)).unwrap();
+        let mut seed_file =
+            File::create(&format!("./seed/{}", job_description[i].seed_id)).unwrap();
+        let mut scores_file = File::create(&format!("./scores/{}", compute_res.scores_id)).unwrap();
 
         let mut trust_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
-            .key(format!("trust/{}", trust_id_str))
+            .key(format!("trust/{}", job_description[i].trust_id))
             .send()
             .await
             .unwrap();
         let mut seed_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
-            .key(format!("seed/{}", seed_id_str))
+            .key(format!("seed/{}", job_description[i].seed_id))
             .send()
             .await
             .unwrap();
         let mut scores_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
-            .key(format!("scores/{}", scores_id_str))
+            .key(format!("scores/{}", compute_res.scores_id))
             .send()
             .await
             .unwrap();
@@ -303,9 +313,9 @@ async fn handle_batch_compute_result<PH: Provider>(
             scores_file.write(&bytes.unwrap()).unwrap();
         }
 
-        let trust_file = File::open(&format!("./trust/{}", trust_id_str)).unwrap();
-        let seed_file = File::open(&format!("./seed/{}", seed_id_str)).unwrap();
-        let scores_file = File::open(&format!("./scores/{}", scores_id_str)).unwrap();
+        let trust_file = File::open(&format!("./trust/{}", job_description[i].trust_id)).unwrap();
+        let seed_file = File::open(&format!("./seed/{}", job_description[i].seed_id)).unwrap();
+        let scores_file = File::open(&format!("./scores/{}", compute_res.scores_id)).unwrap();
 
         let mut trust_rdr = csv::Reader::from_reader(trust_file);
         let mut seed_rdr = csv::Reader::from_reader(seed_file);
@@ -378,7 +388,7 @@ async fn handle_batch_compute_result<PH: Provider>(
 
     let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments).unwrap();
     let meta_commitment = commitment_tree.root().unwrap();
-    let commitment_result = meta_commitment.to_hex() == batch_compute_res.commitment.encode_hex();
+    let commitment_result = meta_commitment.to_hex() == meta_compute_res.commitment.encode_hex();
     if !commitment_result {
         global_result = false;
     }
@@ -388,22 +398,22 @@ async fn handle_batch_compute_result<PH: Provider>(
     info!("Challenge window open: {}", challenge_window_open);
 
     if !global_result && challenge_window_open {
-        info!("Submitting challenge. Calling 'submitChallenge'");
+        info!("Submitting challenge. Calling 'metaSubmitChallenge'");
         let sub_job_failed_uint = Uint::from(sub_job_failed);
         // let required_stake = contract.STAKE().call().await.unwrap();
         let res = contract
-            .submitBatchChallenge(batch_compute_res.computeId, sub_job_failed_uint)
+            .submitMetaChallenge(meta_compute_res.computeId, sub_job_failed_uint)
             // .value(required_stake._0) // Challenger stake not required
             .send()
             .await;
         if let Ok(res) = res {
             info!(
-                "'submitChallenge' completed. Tx Hash({:#})",
+                "'metaSubmitChallenge' completed. Tx Hash({:#})",
                 res.watch().await.unwrap()
             );
         } else {
             let err = res.unwrap_err();
-            error!("'submitChallenge' failed. {}", err);
+            error!("'metaSubmitChallenge' failed. {}", err);
         }
     }
 }
@@ -440,27 +450,27 @@ pub async fn run<P: Provider>(
         .await
         .unwrap();
 
-    // Batch jobs filters
-    let batch_compute_request_filter = contract
-        .BatchComputeRequestEvent_filter()
+    // Meta jobs filters
+    let meta_compute_request_filter = contract
+        .MetaComputeRequestEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let batch_compute_result_filter = contract
-        .BatchComputeResultEvent_filter()
+    let meta_compute_result_filter = contract
+        .MetaComputeResultEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let batch_challenge_filter = contract
-        .BatchChallengeEvent_filter()
+    let meta_challenge_filter = contract
+        .MetaChallengeEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let batch_job_finalised_filter = contract
-        .BatchJobFinalized_filter()
+    let meta_job_finalised_filter = contract
+        .MetaJobFinalized_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
@@ -471,19 +481,19 @@ pub async fn run<P: Provider>(
     let mut challenge_stream = challenge_filter.into_stream();
     let mut job_finalised_stream = job_finalised_filter.into_stream();
 
-    // Batch streams
-    let mut batch_compute_request_stream = batch_compute_request_filter.into_stream();
-    let mut batch_compute_result_stream = batch_compute_result_filter.into_stream();
-    let mut batch_challenge_stream = batch_challenge_filter.into_stream();
-    let mut batch_job_finalised_stream = batch_job_finalised_filter.into_stream();
+    // Meta streams
+    let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
+    let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
+    let mut meta_challenge_stream = meta_challenge_filter.into_stream();
+    let mut meta_job_finalised_stream = meta_job_finalised_filter.into_stream();
 
     let mut compute_request_map = HashMap::new();
     let mut challanged_jobs_map = HashMap::new();
     let mut finalized_jobs_map = HashMap::new();
 
-    let mut batch_compute_request_map = HashMap::new();
-    let mut batch_challanged_jobs_map = HashMap::new();
-    let mut batch_finalized_jobs_map = HashMap::new();
+    let mut meta_compute_request_map = HashMap::new();
+    let mut meta_challanged_jobs_map = HashMap::new();
+    let mut meta_finalized_jobs_map = HashMap::new();
 
     info!("Running the challenger node...");
 
@@ -535,39 +545,54 @@ pub async fn run<P: Provider>(
                     finalized_jobs_map.insert(job_finalized.computeId, log);
                 }
             }
-            batch_compute_request_event = batch_compute_request_stream.next() => {
-                if let Some(res) = batch_compute_request_event {
-                    let (compute_req, log): (BatchComputeRequestEvent, Log) = res.unwrap();
+            meta_compute_request_event = meta_compute_request_stream.next() => {
+                if let Some(res) = meta_compute_request_event {
+                    let (compute_req, log): (MetaComputeRequestEvent, Log) = res.unwrap();
                     info!(
-                        "BatchComputeRequestEvent: ComputeId({}), JobDescriptionId({:#})",
+                        "MetaComputeRequestEvent: ComputeId({}), JobDescriptionId({:#})",
                         compute_req.computeId, compute_req.jobDescriptionId
                     );
                     debug!("{:?}", log);
 
-                    batch_compute_request_map.insert(compute_req.computeId, compute_req);
+                    meta_compute_request_map.insert(compute_req.computeId, compute_req);
                 }
             }
-            batch_compute_result_event = batch_compute_result_stream.next() => {}
-            batch_challenge_event = batch_challenge_stream.next() => {
-                if let Some(res) = batch_challenge_event {
-                    let (challenge, log): (BatchChallengeEvent, Log) = res.unwrap();
+            meta_compute_result_event = meta_compute_result_stream.next() => {
+                if let Some(res) = meta_compute_result_event {
+                    let (compute_res, log): (MetaComputeResultEvent, Log) = res.unwrap();
+                    handle_meta_compute_result(
+                        &contract,
+                        &provider,
+                        &s3_client,
+                        compute_res,
+                        log,
+                        &meta_compute_request_map,
+                        &meta_challanged_jobs_map,
+                        &meta_finalized_jobs_map,
+                        challenge_window._0,
+                    ).await
+                }
+            }
+            meta_challenge_event = meta_challenge_stream.next() => {
+                if let Some(res) = meta_challenge_event {
+                    let (challenge, log): (MetaChallengeEvent, Log) = res.unwrap();
                     info!(
-                        "BatchChallengeEvent: ComputeId({:#}) SubJobID({:#})",
+                        "MetaChallengeEvent: ComputeId({:#}) SubJobID({:#})",
                         challenge.computeId,
                         challenge.subJobId
                     );
                     debug!("{:?}", log);
 
-                    batch_challanged_jobs_map.insert(challenge.computeId, log);
+                    meta_challanged_jobs_map.insert(challenge.computeId, log);
                 }
             }
-            batch_job_finalised_event = batch_job_finalised_stream.next() => {
-                if let Some(res) = batch_job_finalised_event {
-                    let (job_finalized, log): (BatchJobFinalized, Log) = res.unwrap();
-                    info!("BatchJobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
+            meta_job_finalised_event = meta_job_finalised_stream.next() => {
+                if let Some(res) = meta_job_finalised_event {
+                    let (job_finalized, log): (MetaJobFinalized, Log) = res.unwrap();
+                    info!("MetaJobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
                     debug!("{:?}", log);
 
-                    batch_finalized_jobs_map.insert(job_finalized.computeId, log);
+                    meta_finalized_jobs_map.insert(job_finalized.computeId, log);
                 }
             }
         }

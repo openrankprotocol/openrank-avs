@@ -43,16 +43,16 @@ enum Method {
         scores_id: String,
         path: String,
     },
-    RequestCompute {
+    ComputeRequest {
         trust_id: String,
         seed_id: String,
     },
 
-    // Batch jobs
-    BatchDownloadScores {
+    // Meta jobs
+    MetaDownloadScores {
         results_id: String,
     },
-    BatchRequestCompute {
+    MetaComputeRequest {
         trust_folder_path: String,
         seed_folder_path: String,
     },
@@ -123,7 +123,7 @@ async fn main() -> Result<(), AwsError> {
         Method::DownloadScores { scores_id, path } => {
             download_scores(client, scores_id, path).await?
         }
-        Method::RequestCompute { trust_id, seed_id } => {
+        Method::ComputeRequest { trust_id, seed_id } => {
             let provider = ProviderBuilder::new()
                 .wallet(wallet)
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
@@ -143,7 +143,7 @@ async fn main() -> Result<(), AwsError> {
                 .unwrap();
             println!("Tx Hash: {}", res.watch().await.unwrap());
         }
-        Method::BatchDownloadScores { results_id } => {
+        Method::MetaDownloadScores { results_id } => {
             let job_results: Vec<JobResult> =
                 download_meta(client.clone(), results_id).await.unwrap();
             for job_result in job_results {
@@ -156,7 +156,7 @@ async fn main() -> Result<(), AwsError> {
                 .unwrap();
             }
         }
-        Method::BatchRequestCompute {
+        Method::MetaComputeRequest {
             trust_folder_path,
             seed_folder_path,
         } => {
@@ -165,9 +165,8 @@ async fn main() -> Result<(), AwsError> {
             for path in trust_paths {
                 let path = path.unwrap().path();
                 let file_name = path.file_name().unwrap().to_str().unwrap();
-                let res = upload_trust(client.clone(), file_name.to_string())
-                    .await
-                    .unwrap();
+                let display = path.display().to_string();
+                let res = upload_trust(client.clone(), display).await.unwrap();
                 trust_map.insert(file_name.to_string(), res);
             }
 
@@ -176,9 +175,8 @@ async fn main() -> Result<(), AwsError> {
             for path in seed_paths {
                 let path = path.unwrap().path();
                 let file_name = path.file_name().unwrap().to_str().unwrap();
-                let res = upload_seed(client.clone(), file_name.to_string())
-                    .await
-                    .unwrap();
+                let display = path.display().to_string();
+                let res = upload_seed(client.clone(), display).await.unwrap();
                 seed_map.insert(file_name.to_string(), res);
             }
 
@@ -202,7 +200,7 @@ async fn main() -> Result<(), AwsError> {
 
             let required_fee = contract.FEE().call().await.unwrap();
             let res = contract
-                .submitBatchComputeRequest(meta_id_bytes)
+                .submitMetaComputeRequest(meta_id_bytes)
                 .value(required_fee._0)
                 .send()
                 .await
