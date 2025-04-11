@@ -140,8 +140,8 @@ pub fn positive_run(
         // Normalise n+2 scores
         let n_plus_2_scores = normalise_scores(&n_plus_2_scores);
         // Check for convergence.
-        let is_converged = is_converged(&n_plus_1_scores, &n_plus_2_scores);
-        info!("ITER: {}, CONVERGED: {}", i, is_converged);
+        let (is_converged, delta) = is_converged(&n_plus_1_scores, &n_plus_2_scores);
+        info!("ITER: {}, CONVERGED: {}, DELTA: {}", i, is_converged, delta);
         if is_converged {
             // Return previous iteration, since the scores are converged.
             scores = n_plus_1_scores;
@@ -163,7 +163,7 @@ pub fn positive_run(
 
 /// Given the previous scores (`scores`) and the next scores (`next_scores`), checks if the scores have converged.
 /// It returns `true` if the scores have converged and `false` otherwise.
-pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32>) -> bool {
+pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32>) -> (bool, f32) {
     // Iterate over the scores and check if they have converged.
     let total_delta = scores
         .par_iter()
@@ -176,7 +176,7 @@ pub fn is_converged(scores: &BTreeMap<u64, f32>, next_scores: &BTreeMap<u64, f32
             },
         )
         .reduce(|| 0.0, |sum_a, sum_b| sum_a + sum_b);
-    total_delta <= DELTA
+    (total_delta <= DELTA, total_delta)
 }
 
 /// It performs a single iteration of the positive run EigenTrust algorithm on the given local trust matrix (`lt`),
@@ -211,10 +211,11 @@ pub fn convergence_check(
     let next_scores = normalise_scores(&next_scores);
 
     // Check if the scores have converged
-    let is_converged = is_converged(scores, &next_scores);
+    let (is_converged, delta) = is_converged(scores, &next_scores);
     info!(
-        "CONVERGENCE_RESULT: {:?}, TIME: {:?}",
+        "CONVERGENCE_RESULT: {:?}, DELTA: {}, TIME: {:?}",
         is_converged,
+        delta,
         start.elapsed(),
     );
     is_converged
