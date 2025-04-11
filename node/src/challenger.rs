@@ -312,7 +312,9 @@ async fn handle_meta_compute_result<PH: Provider>(
         while let Some(bytes) = scores_res.body.next().await {
             scores_file.write(&bytes.unwrap()).unwrap();
         }
+    }
 
+    for (i, compute_res) in meta_result.iter().enumerate() {
         let trust_file = File::open(&format!("./trust/{}", job_description[i].trust_id)).unwrap();
         let seed_file = File::open(&format!("./seed/{}", job_description[i].seed_id)).unwrap();
         let scores_file = File::open(&format!("./scores/{}", compute_res.scores_id)).unwrap();

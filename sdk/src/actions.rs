@@ -24,6 +24,8 @@ pub async fn upload_trust(client: Client, path: String) -> Result<String, AwsErr
         let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
     }
 
+    println!("Uploading trust data: {}", hex::encode(hash.clone()));
+
     client
         .put_object()
         .bucket(BUCKET_NAME)
@@ -50,6 +52,8 @@ pub async fn upload_seed(client: Client, path: String) -> Result<String, AwsErro
         let record: csv::StringRecord = result.unwrap();
         let (_, _): (String, f32) = record.deserialize(None).unwrap();
     }
+
+    println!("Uploading seed data: {}", hex::encode(hash.clone()));
 
     client
         .put_object()

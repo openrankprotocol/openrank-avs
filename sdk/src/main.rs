@@ -192,7 +192,6 @@ async fn main() -> Result<(), AwsError> {
             let provider = ProviderBuilder::new()
                 .wallet(wallet)
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
-
             let contract =
                 OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
 

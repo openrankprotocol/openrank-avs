@@ -32,7 +32,7 @@ use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
 const TICK_DURATION: u64 = 30;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct JobDescription {
     alpha: f32,
     trust_id: String,
@@ -233,7 +233,7 @@ async fn handle_meta_compute_request<PH: Provider>(
 
     let mut job_results = Vec::new();
     let mut commitments = Vec::new();
-    for compute_req in meta_job {
+    for compute_req in meta_job.clone() {
         info!(
             "SubJob: TrustId({}), SeedId({})",
             compute_req.trust_id, compute_req.seed_id
@@ -265,7 +265,9 @@ async fn handle_meta_compute_request<PH: Provider>(
         while let Some(bytes) = seed_res.body.next().await {
             seed_file.write(&bytes.unwrap()).unwrap();
         }
+    }
 
+    for compute_req in meta_job {
         let trust_file = File::open(&format!("./trust/{}", compute_req.trust_id)).unwrap();
         let seed_file = File::open(&format!("./seed/{}", compute_req.seed_id)).unwrap();
 
