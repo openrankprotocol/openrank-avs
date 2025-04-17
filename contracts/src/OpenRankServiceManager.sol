@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.25;
+pragma solidity ^0.8.27;
 
-contract OpenRankManager {
+import {ECDSAServiceManagerBase} from "@eigenlayer-middleware/src/unaudited/ECDSAServiceManagerBase.sol";
+
+contract OpenRankServiceManager is ECDSAServiceManagerBase {
     error ComputeRequestNotFound();
     error ComputeResultAlreadySubmitted();
     error ComputeResultNotFound();
@@ -61,8 +63,6 @@ contract OpenRankManager {
     uint256 public FEE = 100;
     uint256 public STAKE = 100;
 
-    address public owner;
-
     uint256 public idCounter;
 
     mapping(address => bool) allowlistedComputers;
@@ -103,22 +103,59 @@ contract OpenRankManager {
     event MetaChallengeEvent(uint256 indexed computeId, uint256 subJobId);
     event MetaJobFinalized(uint256 indexed computeId);
 
-    modifier onlyOwner() {
-        require(
-            msg.sender == owner,
-            "Only owner allowed to call this function"
-        );
-        _;
-    }
-
-    constructor() {
+    constructor(
+        address _avsDirectory,
+        address _stakeRegistry,
+        address _rewardsCoordinator,
+        address _delegationManager,
+        address _allocationManager
+    )
+        ECDSAServiceManagerBase(
+            _avsDirectory,
+            _stakeRegistry,
+            _rewardsCoordinator,
+            _delegationManager,
+            _allocationManager
+        )
+    {
         idCounter = 1;
 
         allowlistedComputers[msg.sender] = true;
         allowlistedChallengers[msg.sender] = true;
         allowlistedUsers[msg.sender] = true;
+    }
 
-        owner = msg.sender;
+    function initialize(
+        address initialOwner,
+        address _rewardsInitiator
+    ) external initializer {
+        __ServiceManagerBase_init(initialOwner, _rewardsInitiator);
+    }
+
+    // These are just to comply with IServiceManager interface
+    function addPendingAdmin(address admin) external onlyOwner {}
+
+    function removePendingAdmin(address pendingAdmin) external onlyOwner {}
+
+    function removeAdmin(address admin) external onlyOwner {}
+
+    function setAppointee(
+        address appointee,
+        address target,
+        bytes4 selector
+    ) external onlyOwner {}
+
+    function removeAppointee(
+        address appointee,
+        address target,
+        bytes4 selector
+    ) external onlyOwner {}
+
+    function deregisterOperatorFromOperatorSets(
+        address operator,
+        uint32[] memory operatorSetIds
+    ) external {
+        // unused
     }
 
     // ---------------------------------------------------------------
