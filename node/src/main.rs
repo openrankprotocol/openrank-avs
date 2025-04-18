@@ -13,7 +13,10 @@ use aws_config::from_env;
 use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
+use openrank_common::logs::setup_tracing;
 use sol::OpenRankManager;
+
+const BUCKET_NAME: &str = "openrank-data-dev";
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -26,9 +29,10 @@ struct Args {
 async fn main() {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     dotenv().ok();
+    setup_tracing();
+
     let cli = Args::parse();
 
-    let bucket_name = std::env::var("BUCKET_NAME").expect("BUCKET_NAME must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let wss_url = std::env::var("CHAIN_WSS_URL").expect("CHAIN_WSS_URL must be set.");
     let manager_address =
@@ -57,8 +61,8 @@ async fn main() {
     let contract_ws = OpenRankManager::new(address, provider_wss);
 
     if cli.challenger {
-        challenger::run(contract, provider_http, client, bucket_name).await;
+        challenger::run(contract, provider_http, client).await;
     } else {
-        computer::run(contract, contract_ws, provider_http, client, bucket_name).await;
+        computer::run(contract, contract_ws, provider_http, client).await;
     }
 }

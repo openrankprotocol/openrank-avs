@@ -5,6 +5,10 @@
 contracts/cache/
 contracts/out/
 
+
+# Script files
+contracts/config/**
+
 # Ignores development broadcast logs
 !/broadcast
 contracts/broadcast/*/31337/
