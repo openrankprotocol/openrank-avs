@@ -11,7 +11,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
     error ChallengePeriodExpired();
     error JobAlreadyFinalized();
     error CannotFinalizeJob();
-    error InvalidFee();
     error CallerNotWhitelisted();
 
     struct ComputeRequest {
@@ -59,7 +58,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
 
     uint64 public CHALLENGE_WINDOW = 60 * 60; // 60 minutes
     uint64 public RXP_WINDOW = 60;
-    uint256 public FEE = 100;
 
     uint256 public idCounter;
 
@@ -115,19 +113,19 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             _delegationManager,
             _allocationManager
         )
-    {
-        idCounter = 1;
-
-        allowlistedComputers[msg.sender] = true;
-        allowlistedChallengers[msg.sender] = true;
-        allowlistedUsers[msg.sender] = true;
-    }
+    {}
 
     function initialize(
         address initialOwner,
         address _rewardsInitiator
     ) external initializer {
         __ServiceManagerBase_init(initialOwner, _rewardsInitiator);
+
+        idCounter = 1;
+
+        allowlistedComputers[initialOwner] = true;
+        allowlistedChallengers[initialOwner] = true;
+        allowlistedUsers[initialOwner] = true;
     }
 
     // These are just to comply with IServiceManager interface
@@ -163,12 +161,9 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
     function submitComputeRequest(
         bytes32 trustId,
         bytes32 seedId
-    ) external payable returns (uint256 computeId) {
+    ) external returns (uint256 computeId) {
         if (!allowlistedUsers[msg.sender]) {
             revert CallerNotWhitelisted();
-        }
-        if (msg.value != FEE) {
-            revert InvalidFee();
         }
         ComputeRequest memory computeRequest = ComputeRequest({
             user: msg.sender,
@@ -189,7 +184,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         uint256 computeId,
         bytes32 commitment,
         bytes32 scoresId
-    ) external payable returns (bool) {
+    ) external returns (bool) {
         if (!allowlistedComputers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -201,7 +196,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         }
 
         ComputeResult memory computeResult = ComputeResult({
-            computer: payable(msg.sender),
+            computer: msg.sender,
             computeId: computeId,
             commitment: commitment,
             scoresId: scoresId,
@@ -214,9 +209,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         return true;
     }
 
-    function submitChallenge(
-        uint256 computeId
-    ) external payable returns (bool) {
+    function submitChallenge(uint256 computeId) external returns (bool) {
         if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -233,12 +226,10 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             revert ChallengePeriodExpired();
         } else {
             Challenge memory challenge = Challenge({
-                challenger: payable(msg.sender),
+                challenger: msg.sender,
                 timestamp: block.timestamp
             });
             challenges[computeId] = challenge;
-
-            payable(challenge.challenger).transfer(FEE);
             jobsFinalized[computeId] = true;
 
             emit ChallengeEvent(computeId);
@@ -261,7 +252,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             computeDiff > CHALLENGE_WINDOW &&
             challenges[computeId].challenger == address(0x0)
         ) {
-            payable(computeResults[computeId].computer).transfer(FEE);
             jobsFinalized[computeId] = true;
 
             emit JobFinalized(computeId);
@@ -278,12 +268,9 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
 
     function submitMetaComputeRequest(
         bytes32 jobDescriptionId
-    ) external payable returns (uint256 computeId) {
+    ) external returns (uint256 computeId) {
         if (!allowlistedUsers[msg.sender]) {
             revert CallerNotWhitelisted();
-        }
-        if (msg.value != FEE) {
-            revert InvalidFee();
         }
         MetaComputeRequest memory computeRequest = MetaComputeRequest({
             user: msg.sender,
@@ -303,7 +290,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         uint256 computeId,
         bytes32 metaCommitment,
         bytes32 resultsId
-    ) external payable returns (bool) {
+    ) external returns (bool) {
         if (!allowlistedComputers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -315,7 +302,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         }
 
         MetaComputeResult memory computeResult = MetaComputeResult({
-            computer: payable(msg.sender),
+            computer: msg.sender,
             computeId: computeId,
             metaCommitment: metaCommitment,
             resultsId: resultsId,
@@ -331,7 +318,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
     function submitMetaChallenge(
         uint256 computeId,
         uint256 subJobId
-    ) external payable returns (bool) {
+    ) external returns (bool) {
         if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -348,14 +335,12 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             revert ChallengePeriodExpired();
         } else {
             MetaChallenge memory challenge = MetaChallenge({
-                challenger: payable(msg.sender),
+                challenger: msg.sender,
                 computeId: computeId,
                 subJobId: subJobId,
                 timestamp: block.timestamp
             });
             metaChallenges[computeId] = challenge;
-
-            payable(challenge.challenger).transfer(FEE);
             metaJobsFinalized[computeId] = true;
 
             emit MetaChallengeEvent(computeId, subJobId);
@@ -378,7 +363,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             computeDiff > CHALLENGE_WINDOW &&
             metaChallenges[computeId].challenger == address(0x0)
         ) {
-            payable(metaComputeResults[computeId].computer).transfer(FEE);
             metaJobsFinalized[computeId] = true;
 
             emit MetaJobFinalized(computeId);
@@ -387,6 +371,16 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         } else {
             revert CannotFinalizeJob();
         }
+    }
+
+    // ---------------------------------------------------------------
+    // Getters
+    // ---------------------------------------------------------------
+
+    function isAllowlistedComputer(
+        address computer
+    ) public view returns (bool) {
+        return allowlistedComputers[computer];
     }
 
     // ---------------------------------------------------------------
@@ -399,9 +393,5 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
 
     function updateRxPWindow(uint64 rxpWindow) public onlyOwner {
         RXP_WINDOW = rxpWindow;
-    }
-
-    function updateFee(uint256 fee) public onlyOwner {
-        FEE = fee;
     }
 }

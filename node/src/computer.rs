@@ -1,6 +1,7 @@
-use crate::sol::OpenRankManager::{
+use crate::sol::OpenRankServiceManager::{
     ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
     MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized,
+    OpenRankServiceManagerInstance,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -27,8 +28,6 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 use tokio::{select, time};
 use tracing::{debug, error, info};
-
-use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
 const TICK_DURATION: u64 = 30;
 
@@ -87,7 +86,7 @@ pub async fn download_meta<T: DeserializeOwned>(
 }
 
 async fn handle_compute_request<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
+    contract: &OpenRankServiceManagerInstance<(), PH>,
     s3_client: &Client,
     compute_req: ComputeRequestEvent,
     log: Log,
@@ -201,10 +200,8 @@ async fn handle_compute_request<PH: Provider>(
     info!("Total compute time: {:?}", elapsed);
 
     info!("Posting commitment on-chain. Calling: 'submitComputeResult'");
-    let required_stake = contract.STAKE().call().await.unwrap();
     let res = contract
         .submitComputeResult(compute_req.computeId, commitment_bytes, scores_id_bytes)
-        .value(required_stake._0)
         .send()
         .await
         .unwrap();
@@ -215,7 +212,7 @@ async fn handle_compute_request<PH: Provider>(
 }
 
 async fn handle_meta_compute_request<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
+    contract: &OpenRankServiceManagerInstance<(), PH>,
     s3_client: &Client,
     meta_compute_req: MetaComputeRequestEvent,
     log: Log,
@@ -353,14 +350,12 @@ async fn handle_meta_compute_request<PH: Provider>(
     let meta_id_bytes = FixedBytes::from_slice(hex::decode(meta_id).unwrap().as_slice());
 
     info!("Posting commitment on-chain. Calling: 'submitMetaComputeResult'");
-    let required_stake = contract.STAKE().call().await.unwrap();
     let res = contract
         .submitMetaComputeResult(
             meta_compute_req.computeId,
             meta_commitment_bytes,
             meta_id_bytes,
         )
-        .value(required_stake._0)
         .send()
         .await
         .unwrap();
@@ -374,7 +369,7 @@ async fn handle_meta_compute_request<PH: Provider>(
 }
 
 async fn finalize_job<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
+    contract: &OpenRankServiceManagerInstance<(), PH>,
     provider_http: &PH,
     challenge_window: u64,
     compute_result_map: &HashMap<Uint<256, 4>, Log>,
@@ -445,8 +440,8 @@ async fn finalize_job<PH: Provider>(
 }
 
 pub async fn run<PH: Provider, PW: Provider>(
-    contract: OpenRankManagerInstance<(), PH>,
-    contract_ws: OpenRankManagerInstance<(), PW>,
+    contract: OpenRankServiceManagerInstance<(), PH>,
+    contract_ws: OpenRankServiceManagerInstance<(), PW>,
     provider_http: PH,
     s3_client: Client,
 ) {

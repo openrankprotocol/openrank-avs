@@ -1,6 +1,7 @@
-use crate::sol::OpenRankManager::{
+use crate::sol::OpenRankServiceManager::{
     ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
     MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized,
+    OpenRankServiceManagerInstance,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -25,8 +26,6 @@ use std::fs::File;
 use std::io::Write;
 use tokio::select;
 use tracing::{debug, error, info};
-
-use crate::sol::OpenRankManager::OpenRankManagerInstance;
 
 #[derive(Serialize, Deserialize)]
 struct JobDescription {
@@ -57,7 +56,7 @@ pub async fn download_meta<T: DeserializeOwned>(
 }
 
 async fn handle_compute_result<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
+    contract: &OpenRankServiceManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
     compute_res: ComputeResultEvent,
@@ -201,12 +200,7 @@ async fn handle_compute_result<PH: Provider>(
 
     if !result && challenge_window_open {
         info!("Submitting challenge. Calling 'submitChallenge'");
-        // let required_stake = contract.STAKE().call().await.unwrap();
-        let res = contract
-            .submitChallenge(compute_res.computeId)
-            // .value(required_stake._0) // Challenger stake not required
-            .send()
-            .await;
+        let res = contract.submitChallenge(compute_res.computeId).send().await;
         if let Ok(res) = res {
             info!(
                 "'submitChallenge' completed. Tx Hash({:#})",
@@ -220,7 +214,7 @@ async fn handle_compute_result<PH: Provider>(
 }
 
 async fn handle_meta_compute_result<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
+    contract: &OpenRankServiceManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
     meta_compute_res: MetaComputeResultEvent,
@@ -402,10 +396,8 @@ async fn handle_meta_compute_result<PH: Provider>(
     if !global_result && challenge_window_open {
         info!("Submitting challenge. Calling 'metaSubmitChallenge'");
         let sub_job_failed_uint = Uint::from(sub_job_failed);
-        // let required_stake = contract.STAKE().call().await.unwrap();
         let res = contract
             .submitMetaChallenge(meta_compute_res.computeId, sub_job_failed_uint)
-            // .value(required_stake._0) // Challenger stake not required
             .send()
             .await;
         if let Ok(res) = res {
@@ -421,7 +413,7 @@ async fn handle_meta_compute_result<PH: Provider>(
 }
 
 pub async fn run<P: Provider>(
-    contract: OpenRankManagerInstance<(), P>,
+    contract: OpenRankServiceManagerInstance<(), P>,
     provider: P,
     s3_client: Client,
 ) {

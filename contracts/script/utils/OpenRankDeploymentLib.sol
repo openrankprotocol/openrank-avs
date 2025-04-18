@@ -33,8 +33,6 @@ library OpenRankDeploymentLib {
     struct DeploymentConfigData {
         address rewardsOwner;
         address rewardsInitiator;
-        uint256 rewardsOwnerKey;
-        uint256 rewardsInitiatorKey;
     }
 
     function deployContracts(
@@ -202,8 +200,6 @@ library OpenRankDeploymentLib {
         DeploymentConfigData memory data;
         data.rewardsOwner = json.readAddress(".addresses.rewardsOwner");
         data.rewardsInitiator = json.readAddress(".addresses.rewardsInitiator");
-        data.rewardsOwnerKey = json.readUint(".keys.rewardsOwner");
-        data.rewardsInitiatorKey = json.readUint(".keys.rewardsInitiator");
         return data;
     }
 

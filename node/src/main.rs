@@ -14,7 +14,7 @@ use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
 use openrank_common::logs::setup_tracing;
-use sol::OpenRankManager;
+use sol::OpenRankServiceManager;
 
 const BUCKET_NAME: &str = "openrank-data-dev";
 
@@ -56,9 +56,8 @@ async fn main() {
     let provider_wss = ProviderBuilder::new().on_ws(ws).await.unwrap();
 
     let address = Address::from_hex(manager_address).unwrap();
-    let contract = OpenRankManager::new(address, provider_http.clone());
-
-    let contract_ws = OpenRankManager::new(address, provider_wss);
+    let contract = OpenRankServiceManager::new(address, provider_http.clone());
+    let contract_ws = OpenRankServiceManager::new(address, provider_wss);
 
     if cli.challenger {
         challenger::run(contract, provider_http, client).await;

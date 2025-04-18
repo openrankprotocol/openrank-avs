@@ -1,9 +1,6 @@
 mod actions;
 mod sol;
 
-use std::collections::HashMap;
-use std::fs::read_dir;
-
 use actions::{
     download_meta, download_scores, download_seed, download_trust, upload_meta, upload_seed,
     upload_trust,
@@ -20,7 +17,9 @@ use aws_sdk_s3::{Client, Error as AwsError};
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
-use sol::OpenRankManager;
+use sol::OpenRankServiceManager;
+use std::collections::HashMap;
+use std::fs::read_dir;
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
@@ -129,15 +128,13 @@ async fn main() -> Result<(), AwsError> {
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
 
             let contract =
-                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
+                OpenRankServiceManager::new(Address::from_hex(manager_address).unwrap(), provider);
 
             let trust_id_bytes = FixedBytes::from_hex(trust_id).unwrap();
             let seed_id_bytes = FixedBytes::from_hex(seed_id).unwrap();
 
-            let required_fee = contract.FEE().call().await.unwrap();
             let res = contract
                 .submitComputeRequest(trust_id_bytes, seed_id_bytes)
-                .value(required_fee._0)
                 .send()
                 .await
                 .unwrap();
@@ -193,14 +190,12 @@ async fn main() -> Result<(), AwsError> {
                 .wallet(wallet)
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
             let contract =
-                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
+                OpenRankServiceManager::new(Address::from_hex(manager_address).unwrap(), provider);
 
             let meta_id_bytes = FixedBytes::from_hex(meta_id.clone()).unwrap();
 
-            let required_fee = contract.FEE().call().await.unwrap();
             let res = contract
                 .submitMetaComputeRequest(meta_id_bytes)
-                .value(required_fee._0)
                 .send()
                 .await
                 .unwrap();
