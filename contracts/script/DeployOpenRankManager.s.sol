@@ -4,7 +4,7 @@ pragma solidity ^0.8.0;
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/Test.sol";
 import {OpenRankDeploymentLib} from "./utils/OpenRankDeploymentLib.sol";
-import {CoreDeploymentLib, CoreDeploymentParsingLib} from "./utils/CoreDeploymentLib.sol";
+import {CoreDeployLib, CoreDeploymentParsingLib} from "./utils/CoreDeploymentLib.sol";
 import {UpgradeableProxyLib} from "./utils/UpgradeableProxyLib.sol";
 import {StrategyBase} from "@eigenlayer/contracts/strategies/StrategyBase.sol";
 import {ERC20Mock} from "../test/ERC20Mock.sol";
@@ -16,7 +16,7 @@ import {IECDSAStakeRegistryTypes, IStrategy} from "@eigenlayer-middleware/src/in
 import "forge-std/Test.sol";
 
 contract OpenRankDeployer is Script, Test {
-    using CoreDeploymentLib for *;
+    using CoreDeployLib for *;
     using UpgradeableProxyLib for address;
 
     address private deployer;
@@ -24,7 +24,7 @@ contract OpenRankDeployer is Script, Test {
     address rewardsOwner;
     address rewardsInitiator;
     IStrategy openRankStrategy;
-    CoreDeploymentLib.DeploymentData coreDeployment;
+    CoreDeployLib.DeploymentData coreDeployment;
     OpenRankDeploymentLib.DeploymentData openRankDeployment;
     OpenRankDeploymentLib.DeploymentConfigData openRankConfig;
     IECDSAStakeRegistryTypes.Quorum internal quorum;
@@ -35,12 +35,12 @@ contract OpenRankDeployer is Script, Test {
         vm.label(deployer, "Deployer");
 
         openRankConfig = OpenRankDeploymentLib.readDeploymentConfigValues(
-            "config/open-rank/",
+            "contracts/config/openrank/",
             block.chainid
         );
 
         coreDeployment = CoreDeploymentParsingLib.readDeploymentJson(
-            "deployments/core/",
+            "contracts/deployments/core/",
             block.chainid
         );
     }

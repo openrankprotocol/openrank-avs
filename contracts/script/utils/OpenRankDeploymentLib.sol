@@ -152,7 +152,11 @@ library OpenRankDeploymentLib {
 
     /// write to default output path
     function writeDeploymentJson(DeploymentData memory data) internal {
-        writeDeploymentJson("deployments/open-rank/", block.chainid, data);
+        writeDeploymentJson(
+            "contracts/deployments/openrank/",
+            block.chainid,
+            data
+        );
     }
 
     function writeDeploymentJson(

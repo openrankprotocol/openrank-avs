@@ -12,7 +12,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
     error JobAlreadyFinalized();
     error CannotFinalizeJob();
     error InvalidFee();
-    error InvalidStake();
     error CallerNotWhitelisted();
 
     struct ComputeRequest {
@@ -61,7 +60,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
     uint64 public CHALLENGE_WINDOW = 60 * 60; // 60 minutes
     uint64 public RXP_WINDOW = 60;
     uint256 public FEE = 100;
-    uint256 public STAKE = 100;
 
     uint256 public idCounter;
 
@@ -201,9 +199,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         if (computeResults[computeId].computeId != 0) {
             revert ComputeResultAlreadySubmitted();
         }
-        if (msg.value != STAKE) {
-            revert InvalidStake();
-        }
 
         ComputeResult memory computeResult = ComputeResult({
             computer: payable(msg.sender),
@@ -243,7 +238,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             });
             challenges[computeId] = challenge;
 
-            payable(challenge.challenger).transfer(FEE + STAKE);
+            payable(challenge.challenger).transfer(FEE);
             jobsFinalized[computeId] = true;
 
             emit ChallengeEvent(computeId);
@@ -266,7 +261,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             computeDiff > CHALLENGE_WINDOW &&
             challenges[computeId].challenger == address(0x0)
         ) {
-            payable(computeResults[computeId].computer).transfer(FEE + STAKE);
+            payable(computeResults[computeId].computer).transfer(FEE);
             jobsFinalized[computeId] = true;
 
             emit JobFinalized(computeId);
@@ -318,9 +313,6 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
         if (metaComputeResults[computeId].computeId != 0) {
             revert ComputeResultAlreadySubmitted();
         }
-        if (msg.value != STAKE) {
-            revert InvalidStake();
-        }
 
         MetaComputeResult memory computeResult = MetaComputeResult({
             computer: payable(msg.sender),
@@ -363,7 +355,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             });
             metaChallenges[computeId] = challenge;
 
-            payable(challenge.challenger).transfer(FEE + STAKE);
+            payable(challenge.challenger).transfer(FEE);
             metaJobsFinalized[computeId] = true;
 
             emit MetaChallengeEvent(computeId, subJobId);
@@ -386,9 +378,7 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
             computeDiff > CHALLENGE_WINDOW &&
             metaChallenges[computeId].challenger == address(0x0)
         ) {
-            payable(metaComputeResults[computeId].computer).transfer(
-                FEE + STAKE
-            );
+            payable(metaComputeResults[computeId].computer).transfer(FEE);
             metaJobsFinalized[computeId] = true;
 
             emit MetaJobFinalized(computeId);
@@ -413,9 +403,5 @@ contract OpenRankServiceManager is ECDSAServiceManagerBase {
 
     function updateFee(uint256 fee) public onlyOwner {
         FEE = fee;
-    }
-
-    function updateStake(uint256 stake) public onlyOwner {
-        STAKE = stake;
     }
 }
