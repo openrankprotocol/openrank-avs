@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: BUSL-1.1
-pragma solidity ^0.8.12;
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.27;
 
 import {Script} from "forge-std/Script.sol";
 import {CoreDeployLib, CoreDeploymentParsingLib} from "./utils/CoreDeploymentLib.sol";
@@ -8,7 +8,7 @@ import {IRewardsCoordinator} from "@eigenlayer/contracts/interfaces/IRewardsCoor
 import {StrategyManager} from "@eigenlayer/contracts/core/StrategyManager.sol";
 import "forge-std/Test.sol";
 
-contract DeployEigenLayerCore is Script, Test {
+contract EigenLayerCoreDeployer is Script, Test {
     using CoreDeployLib for *;
     using UpgradeableProxyLib for address;
 
