@@ -4,9 +4,6 @@
 [submodule "contracts/lib/eigenlayer-middleware"]
 	path = contracts/lib/eigenlayer-middleware
 	url = https://github.com/Layr-Labs/eigenlayer-middleware
-[submodule "contracts/lib/teal"]
-	path = contracts/lib/teal
-	url = https://github.com/layr-labs/teal
 [submodule "contracts/lib/eigenda"]
 	path = contracts/lib/eigenda
 	url = https://github.com/Layr-Labs/eigenda
