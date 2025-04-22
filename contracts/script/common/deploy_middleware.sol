@@ -1,42 +1,39 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.27;
 
-import { ProxyAdmin } from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
-import { TransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
-import { ITransparentUpgradeableProxy } from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
+import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
+import {ITransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
 
-import { IAVSDirectory } from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
+import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/interfaces/IAVSDirectory.sol";
 
-import { IAVSRegistrar } from "eigenlayer-contracts/src/contracts/interfaces/IAVSRegistrar.sol";
-import { IAllocationManager } from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import { IDelegationManager } from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
+import {IAVSRegistrar} from "eigenlayer-contracts/src/contracts/interfaces/IAVSRegistrar.sol";
+import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IDelegationManager} from "eigenlayer-contracts/src/contracts/interfaces/IDelegationManager.sol";
 
-import { IPermissionController } from "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
-import { IRewardsCoordinator } from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
-import { PauserRegistry } from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
-import { EmptyContract } from "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
+import {IPermissionController} from "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
+import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces/IRewardsCoordinator.sol";
+import {PauserRegistry} from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
+import {EmptyContract} from "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 
-import { MinimalServiceManager } from "../../src/avs/MinimalServiceManager.sol";
-import { IPauserRegistry } from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
-import { BLSApkRegistry } from "eigenlayer-middleware/src/BLSApkRegistry.sol";
-import { IndexRegistry } from "eigenlayer-middleware/src/IndexRegistry.sol";
-import { OperatorStateRetriever } from "eigenlayer-middleware/src/OperatorStateRetriever.sol";
+import {OpenRankManager} from "../../src/avs/OpenRankManager.sol";
+import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
+import {BLSApkRegistry} from "eigenlayer-middleware/src/BLSApkRegistry.sol";
+import {IndexRegistry} from "eigenlayer-middleware/src/IndexRegistry.sol";
+import {OperatorStateRetriever} from "eigenlayer-middleware/src/OperatorStateRetriever.sol";
 
-import { ServiceManagerBase } from "eigenlayer-middleware/src/ServiceManagerBase.sol";
-import { SlashingRegistryCoordinator } from "eigenlayer-middleware/src/SlashingRegistryCoordinator.sol";
-import { ISocketRegistry, SocketRegistry } from "eigenlayer-middleware/src/SocketRegistry.sol";
-import { IStrategy, StakeRegistry } from "eigenlayer-middleware/src/StakeRegistry.sol";
-import { IBLSApkRegistry } from "eigenlayer-middleware/src/interfaces/IBLSApkRegistry.sol";
-import { IIndexRegistry } from "eigenlayer-middleware/src/interfaces/IIndexRegistry.sol";
-import { IRegistryCoordinator } from "eigenlayer-middleware/src/interfaces/IRegistryCoordinator.sol";
+import {ServiceManagerBase} from "eigenlayer-middleware/src/ServiceManagerBase.sol";
+import {SlashingRegistryCoordinator} from "eigenlayer-middleware/src/SlashingRegistryCoordinator.sol";
+import {ISocketRegistry, SocketRegistry} from "eigenlayer-middleware/src/SocketRegistry.sol";
+import {IStrategy, StakeRegistry} from "eigenlayer-middleware/src/StakeRegistry.sol";
+import {IBLSApkRegistry} from "eigenlayer-middleware/src/interfaces/IBLSApkRegistry.sol";
+import {IIndexRegistry} from "eigenlayer-middleware/src/interfaces/IIndexRegistry.sol";
+import {IRegistryCoordinator} from "eigenlayer-middleware/src/interfaces/IRegistryCoordinator.sol";
 
-import { IServiceManager } from "eigenlayer-middleware/src/interfaces/IServiceManager.sol";
+import {IServiceManager} from "eigenlayer-middleware/src/interfaces/IServiceManager.sol";
 
-import {
-    ISlashingRegistryCoordinator,
-    ISlashingRegistryCoordinatorTypes
-} from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
-import { IStakeRegistry, IStakeRegistryTypes } from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
+import {ISlashingRegistryCoordinator, ISlashingRegistryCoordinatorTypes} from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {IStakeRegistry, IStakeRegistryTypes} from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
 
 import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
@@ -60,7 +57,8 @@ contract DeployAVS is Script, Test {
     // Implementation contracts
     BLSApkRegistry public apkRegistryImplementation;
     IServiceManager public serviceManagerImplementation;
-    ISlashingRegistryCoordinator public slashingRegistryCoordinatorImplementation;
+    ISlashingRegistryCoordinator
+        public slashingRegistryCoordinatorImplementation;
     IIndexRegistry public indexRegistryImplementation;
     IStakeRegistry public stakeRegistryImplementation;
     ISocketRegistry public socketRegistryImplementation;
@@ -78,7 +76,9 @@ contract DeployAVS is Script, Test {
         uint256 maxOperatorCount,
         IStrategy[] memory strategies
     ) public virtual {
-        EigenlayerDeployment memory eigenlayerDeployment = parseConfig(inputConfigPath);
+        EigenlayerDeployment memory eigenlayerDeployment = parseConfig(
+            inputConfigPath
+        );
 
         // only a lower bound for the deployment block number
         uint256 deploymentBlock = block.number;
@@ -96,29 +96,68 @@ contract DeployAVS is Script, Test {
 
         // Deploy upgradeable proxy contracts pointing to empty contract initially
         serviceManager = ServiceManagerBase(
-            address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), ""))
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
         );
 
         slashingRegistryCoordinator = SlashingRegistryCoordinator(
-            address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), ""))
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
         );
 
-        indexRegistry =
-            IIndexRegistry(address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), "")));
+        indexRegistry = IIndexRegistry(
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
+        );
 
-        stakeRegistry =
-            IStakeRegistry(address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), "")));
+        stakeRegistry = IStakeRegistry(
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
+        );
 
-        apkRegistry =
-            BLSApkRegistry(address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), "")));
+        apkRegistry = BLSApkRegistry(
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
+        );
 
         socketRegistry = ISocketRegistry(
-            address(new TransparentUpgradeableProxy(address(emptyContract), address(avsProxyAdmin), ""))
+            address(
+                new TransparentUpgradeableProxy(
+                    address(emptyContract),
+                    address(avsProxyAdmin),
+                    ""
+                )
+            )
         );
 
         // Deploy implementations and upgrade proxies
 
-        serviceManagerImplementation = new MinimalServiceManager(
+        serviceManagerImplementation = new OpenRankManager(
             IAVSDirectory(eigenlayerDeployment.avsDirectory),
             IRewardsCoordinator(eigenlayerDeployment.rewardsCoordinator),
             ISlashingRegistryCoordinator(address(slashingRegistryCoordinator)),
@@ -130,13 +169,20 @@ contract DeployAVS is Script, Test {
         avsProxyAdmin.upgradeAndCall(
             ITransparentUpgradeableProxy(payable(address(serviceManager))),
             address(serviceManagerImplementation),
-            abi.encodeWithSelector(MinimalServiceManager.initialize.selector, msg.sender, msg.sender)
+            abi.encodeWithSelector(
+                OpenRankManager.initialize.selector,
+                msg.sender,
+                msg.sender
+            )
         );
 
-        indexRegistryImplementation = new IndexRegistry(slashingRegistryCoordinator);
+        indexRegistryImplementation = new IndexRegistry(
+            slashingRegistryCoordinator
+        );
 
         avsProxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(indexRegistry))), address(indexRegistryImplementation)
+            ITransparentUpgradeableProxy(payable(address(indexRegistry))),
+            address(indexRegistryImplementation)
         );
 
         stakeRegistryImplementation = new StakeRegistry(
@@ -147,19 +193,26 @@ contract DeployAVS is Script, Test {
         );
 
         avsProxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(stakeRegistry))), address(stakeRegistryImplementation)
+            ITransparentUpgradeableProxy(payable(address(stakeRegistry))),
+            address(stakeRegistryImplementation)
         );
 
-        apkRegistryImplementation = new BLSApkRegistry(slashingRegistryCoordinator);
-
-        avsProxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(apkRegistry))), address(apkRegistryImplementation)
+        apkRegistryImplementation = new BLSApkRegistry(
+            slashingRegistryCoordinator
         );
 
-        socketRegistryImplementation = new SocketRegistry(slashingRegistryCoordinator);
+        avsProxyAdmin.upgrade(
+            ITransparentUpgradeableProxy(payable(address(apkRegistry))),
+            address(apkRegistryImplementation)
+        );
+
+        socketRegistryImplementation = new SocketRegistry(
+            slashingRegistryCoordinator
+        );
 
         avsProxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(socketRegistry))), address(socketRegistryImplementation)
+            ITransparentUpgradeableProxy(payable(address(socketRegistry))),
+            address(socketRegistryImplementation)
         );
 
         slashingRegistryCoordinatorImplementation = new SlashingRegistryCoordinator(
@@ -173,30 +226,44 @@ contract DeployAVS is Script, Test {
         );
 
         {
-            ISlashingRegistryCoordinatorTypes.OperatorSetParam[] memory operatorSetParams =
-                new ISlashingRegistryCoordinatorTypes.OperatorSetParam[](strategies.length);
+            ISlashingRegistryCoordinatorTypes.OperatorSetParam[]
+                memory operatorSetParams = new ISlashingRegistryCoordinatorTypes.OperatorSetParam[](
+                    strategies.length
+                );
             for (uint256 i = 0; i < strategies.length; i++) {
-                operatorSetParams[i] = ISlashingRegistryCoordinatorTypes.OperatorSetParam({
-                    maxOperatorCount: uint32(maxOperatorCount),
-                    kickBIPsOfOperatorStake: 11000,
-                    kickBIPsOfTotalStake: 1001
-                });
+                operatorSetParams[i] = ISlashingRegistryCoordinatorTypes
+                    .OperatorSetParam({
+                        maxOperatorCount: uint32(maxOperatorCount),
+                        kickBIPsOfOperatorStake: 11000,
+                        kickBIPsOfTotalStake: 1001
+                    });
             }
 
-            uint96[] memory minimumStakeForQuourm = new uint96[](strategies.length);
+            uint96[] memory minimumStakeForQuourm = new uint96[](
+                strategies.length
+            );
             for (uint256 i = 0; i < strategies.length; i++) {
                 minimumStakeForQuourm[i] = 1;
             }
-            IStakeRegistryTypes.StrategyParams[][] memory strategyAndWeightingMultipliers =
-                new IStakeRegistryTypes.StrategyParams[][](strategies.length);
+            IStakeRegistryTypes.StrategyParams[][]
+                memory strategyAndWeightingMultipliers = new IStakeRegistryTypes.StrategyParams[][](
+                    strategies.length
+                );
             for (uint256 i = 0; i < strategies.length; i++) {
-                strategyAndWeightingMultipliers[i] = new IStakeRegistryTypes.StrategyParams[](1);
-                strategyAndWeightingMultipliers[i][0] =
-                    IStakeRegistryTypes.StrategyParams({ strategy: strategies[i], multiplier: 1 ether });
+                strategyAndWeightingMultipliers[
+                    i
+                ] = new IStakeRegistryTypes.StrategyParams[](1);
+                strategyAndWeightingMultipliers[i][0] = IStakeRegistryTypes
+                    .StrategyParams({
+                        strategy: strategies[i],
+                        multiplier: 1 ether
+                    });
             }
 
             avsProxyAdmin.upgradeAndCall(
-                ITransparentUpgradeableProxy(payable(address(slashingRegistryCoordinator))),
+                ITransparentUpgradeableProxy(
+                    payable(address(slashingRegistryCoordinator))
+                ),
                 address(slashingRegistryCoordinatorImplementation),
                 abi.encodeWithSelector(
                     SlashingRegistryCoordinator.initialize.selector,
@@ -212,33 +279,43 @@ contract DeployAVS is Script, Test {
             serviceManager.setAppointee(
                 msg.sender,
                 eigenlayerDeployment.allocationManager,
-                IAllocationManager(eigenlayerDeployment.allocationManager).setAVSRegistrar.selector
+                IAllocationManager(eigenlayerDeployment.allocationManager)
+                    .setAVSRegistrar
+                    .selector
             );
 
-            IAllocationManager(eigenlayerDeployment.allocationManager).setAVSRegistrar(
-                address(serviceManager), IAVSRegistrar(slashingRegistryCoordinator)
-            );
+            IAllocationManager(eigenlayerDeployment.allocationManager)
+                .setAVSRegistrar(
+                    address(serviceManager),
+                    IAVSRegistrar(slashingRegistryCoordinator)
+                );
 
             serviceManager.setAppointee(
                 msg.sender,
                 eigenlayerDeployment.allocationManager,
-                IAllocationManager(eigenlayerDeployment.allocationManager).updateAVSMetadataURI.selector
+                IAllocationManager(eigenlayerDeployment.allocationManager)
+                    .updateAVSMetadataURI
+                    .selector
             );
 
-            IAllocationManager(eigenlayerDeployment.allocationManager).updateAVSMetadataURI(
-                address(serviceManager), "TEST AVS"
-            );
+            IAllocationManager(eigenlayerDeployment.allocationManager)
+                .updateAVSMetadataURI(address(serviceManager), "TEST AVS");
 
             // give slashingregistrycoordindator permission to createTotalDelegatedStakeQuorum
             serviceManager.setAppointee(
                 address(slashingRegistryCoordinator),
                 eigenlayerDeployment.allocationManager,
-                IAllocationManager(eigenlayerDeployment.allocationManager).createOperatorSets.selector
+                IAllocationManager(eigenlayerDeployment.allocationManager)
+                    .createOperatorSets
+                    .selector
             );
 
             for (uint256 i = 0; i < strategies.length; i++) {
                 slashingRegistryCoordinator.createSlashableStakeQuorum(
-                    operatorSetParams[i], minimumStakeForQuourm[i], strategyAndWeightingMultipliers[i], 1
+                    operatorSetParams[i],
+                    minimumStakeForQuourm[i],
+                    strategyAndWeightingMultipliers[i],
+                    1
                 );
             }
         }
@@ -248,21 +325,52 @@ contract DeployAVS is Script, Test {
 
     function parseConfig(
         string memory inputConfigPath
-    ) public virtual returns (EigenlayerDeployment memory eigenlayerDeployment) {
+    )
+        public
+        virtual
+        returns (EigenlayerDeployment memory eigenlayerDeployment)
+    {
         // read the json file
         string memory inputConfig = vm.readFile(inputConfigPath);
         eigenlayerDeployment = EigenlayerDeployment({
-            allocationManager: stdJson.readAddress(inputConfig, ".allocationManager"),
-            delegationManager: stdJson.readAddress(inputConfig, ".delegationManager"),
-            permissionController: stdJson.readAddress(inputConfig, ".permissionController"),
-            rewardsCoordinator: stdJson.readAddress(inputConfig, ".rewardsCoordinator"),
+            allocationManager: stdJson.readAddress(
+                inputConfig,
+                ".allocationManager"
+            ),
+            delegationManager: stdJson.readAddress(
+                inputConfig,
+                ".delegationManager"
+            ),
+            permissionController: stdJson.readAddress(
+                inputConfig,
+                ".permissionController"
+            ),
+            rewardsCoordinator: stdJson.readAddress(
+                inputConfig,
+                ".rewardsCoordinator"
+            ),
             avsDirectory: stdJson.readAddress(inputConfig, ".avsDirectory")
         });
 
-        emit log_named_address("allocation manager", eigenlayerDeployment.allocationManager);
-        emit log_named_address("delegation manager", eigenlayerDeployment.delegationManager);
-        emit log_named_address("permission controller", eigenlayerDeployment.permissionController);
-        emit log_named_address("rewards coordinator", eigenlayerDeployment.rewardsCoordinator);
-        emit log_named_address("avs directory", eigenlayerDeployment.avsDirectory);
+        emit log_named_address(
+            "allocation manager",
+            eigenlayerDeployment.allocationManager
+        );
+        emit log_named_address(
+            "delegation manager",
+            eigenlayerDeployment.delegationManager
+        );
+        emit log_named_address(
+            "permission controller",
+            eigenlayerDeployment.permissionController
+        );
+        emit log_named_address(
+            "rewards coordinator",
+            eigenlayerDeployment.rewardsCoordinator
+        );
+        emit log_named_address(
+            "avs directory",
+            eigenlayerDeployment.avsDirectory
+        );
     }
 }
