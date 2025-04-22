@@ -1,0 +1,21 @@
+{
+    "proxyAdmin": "0x0000000000000000000000000000000000000000",
+    "emptyContract": "0x0000000000000000000000000000000000000000",
+    "initialOwner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "ReexecutionEndpoint": {
+        "responseFeePerOperator": 1,
+        "reexecutionFeePerOperator": 1,
+        "responseWindowBlocks": 7200,
+        "maximumRequestsPerReservationPerResponseWindow": 1000000000000000000
+    },
+    "ReservationRegistry": {
+        "operatorFeeDistributor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "prepaidBilledEpochs": 1,
+        "reservationBondAmount": 100,
+        "resourceCostPerOperatorPerEpoch": 1,
+        "maxImagesPerReservation": 2,
+        "maxReservations": 30,
+        "epochLengthBlocks": 10,
+        "epochGenesisBlock": 1
+    }
+}
