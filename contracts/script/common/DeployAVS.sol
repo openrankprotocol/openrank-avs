@@ -16,7 +16,7 @@ import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces
 import {PauserRegistry} from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
 import {EmptyContract} from "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 
-import {OpenRankManager} from "../../src/OpenRankManager.sol";
+// import {OpenRankManager} from "../../src/OpenRankManager.sol";
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
 import {BLSApkRegistry} from "eigenlayer-middleware/src/BLSApkRegistry.sol";
 import {IndexRegistry} from "eigenlayer-middleware/src/IndexRegistry.sol";
@@ -39,7 +39,7 @@ import "forge-std/Script.sol";
 import "forge-std/StdJson.sol";
 import "forge-std/Test.sol";
 
-contract DeployAVS is Script, Test {
+abstract contract DeployAVS is Script, Test {
     // Core contracts
     ProxyAdmin public avsProxyAdmin;
     PauserRegistry public avsPauserReg;
@@ -157,14 +157,7 @@ contract DeployAVS is Script, Test {
 
         // Deploy implementations and upgrade proxies
 
-        serviceManagerImplementation = new OpenRankManager(
-            IAVSDirectory(eigenlayerDeployment.avsDirectory),
-            IRewardsCoordinator(eigenlayerDeployment.rewardsCoordinator),
-            ISlashingRegistryCoordinator(address(slashingRegistryCoordinator)),
-            IStakeRegistry(address(stakeRegistry)),
-            IPermissionController(eigenlayerDeployment.permissionController),
-            IAllocationManager(eigenlayerDeployment.allocationManager)
-        );
+        serviceManagerImplementation = newServiceManager();
 
         avsProxyAdmin.upgradeAndCall(
             ITransparentUpgradeableProxy(payable(address(serviceManager))),
@@ -322,6 +315,8 @@ contract DeployAVS is Script, Test {
 
         operatorStateRetriever = new OperatorStateRetriever();
     }
+
+    function newServiceManager() public returns (IServiceManager);
 
     function parseConfig(
         string memory inputConfigPath

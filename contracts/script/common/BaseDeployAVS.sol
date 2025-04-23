@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
 import {Script, console} from "forge-std/Script.sol";
@@ -10,13 +10,13 @@ import {IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategy
 import {IERC20, IReexecutionEndpoint} from "../../src/interfaces/IReexecutionEndpoint.sol";
 import {IReservationRegistry} from "../../src/interfaces/IReservationRegistry.sol";
 
-import {BLSApkRegistry, DeployAVS, EmptyContract, IAVSDirectory, IAVSRegistrar, IAllocationManager, IDelegationManager, IIndexRegistry, IPermissionController, IRewardsCoordinator, ISlashingRegistryCoordinatorTypes, ISocketRegistry, IStakeRegistry, IStakeRegistryTypes, ITransparentUpgradeableProxy, IndexRegistry, OperatorStateRetriever, PauserRegistry, ProxyAdmin, ServiceManagerBase, SlashingRegistryCoordinator, SocketRegistry, StakeRegistry, TransparentUpgradeableProxy} from "./deploy_middleware.sol";
+import {BLSApkRegistry, DeployAVS, EmptyContract, IAVSDirectory, IAVSRegistrar, IAllocationManager, IDelegationManager, IIndexRegistry, IPermissionController, IRewardsCoordinator, ISlashingRegistryCoordinatorTypes, ISocketRegistry, IStakeRegistry, IStakeRegistryTypes, ITransparentUpgradeableProxy, IndexRegistry, OperatorStateRetriever, PauserRegistry, ProxyAdmin, ServiceManagerBase, SlashingRegistryCoordinator, SocketRegistry, StakeRegistry, TransparentUpgradeableProxy} from "./DeployAVS.sol";
 
 import {CertificateVerifier} from "../../src/CertificateVerifier.sol";
 import {ReexecutionSlasher} from "../../src/ReexecutionSlasher.sol";
 import {DeployTestUtils} from "./DeployTestUtils.sol";
 
-abstract contract BaseDeploySimpleAVS is DeployAVS, DeployTestUtils {
+abstract contract BaseDeployAVS is DeployAVS, DeployTestUtils {
     IReservationRegistry reservationRegistry;
     IReexecutionEndpoint reexecutionEndpoint;
 

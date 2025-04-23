@@ -9,8 +9,11 @@ import "@openzeppelin/contracts/token/ERC20/presets/ERC20PresetFixedSupply.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {PauserRegistry} from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
 
-import "../src/ReexecutionEndpoint.sol";
-import "../src/ReservationRegistry.sol";
+import {ReexecutionEndpoint} from "../src/ReexecutionEndpoint.sol";
+import {ReservationRegistry} from "../src/ReservationRegistry.sol";
+import {IReservationRegistry} from "../src/interfaces/IReservationRegistry.sol";
+import {IReexecutionEndpoint} from "../src/interfaces/IReexecutionEndpoint.sol";
+import {IEigenDACertVerifier} from "eigenda/contracts/src/interfaces/IEigenDACertVerifier.sol";
 
 import {IAVSDirectory} from "eigenlayer-contracts/src/contracts/core/AVSDirectory.sol";
 import {AllocationManager, IAVSRegistrar, IAllocationManager, IAllocationManagerTypes, OperatorSet} from "eigenlayer-contracts/src/contracts/core/AllocationManager.sol";
@@ -40,7 +43,7 @@ import "./common/DeployTestUtils.sol";
 import {IStrategy} from "eigenlayer-middleware/src/StakeRegistry.sol";
 import {OpenRankManager} from "../src/OpenRankManager.sol";
 
-contract BaseDeployRxp is DeployTestUtils {
+contract DeployRxp is DeployTestUtils {
     using BN254 for *;
     using Strings for uint256;
 
@@ -503,80 +506,6 @@ contract BaseDeployRxp is DeployTestUtils {
         );
     }
 
-    /// @notice parse the existing Rxp contracts. Used for upgrade
-    function _parseRxpContracts(string memory rxpContractsPath) internal {
-        // READ JSON CONFIG DATA FOR EIGENLAYER CONTRACTS
-        string memory rxp_config_data = vm.readFile(rxpContractsPath);
-
-        // Read addresses
-        proxyAdmin = ProxyAdmin(
-            stdJson.readAddress(rxp_config_data, ".addresses.proxyAdmin")
-        );
-        emptyContract = EmptyContract(
-            stdJson.readAddress(rxp_config_data, ".addresses.emptyContract")
-        );
-
-        // Read ReexecutionEndpoint addresses
-        reexecutionEndpoint = IReexecutionEndpoint(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.reexecutionEndpoint.proxy"
-            )
-        );
-        reexecutionEndpointImplementation = IReexecutionEndpoint(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.reexecutionEndpoint.implementation"
-            )
-        );
-
-        // Read ReservationRegistry addresses
-        reservationRegistry = IReservationRegistry(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.reservationRegistry.proxy"
-            )
-        );
-        reservationRegistryImplementation = IReservationRegistry(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.reservationRegistry.implementation"
-            )
-        );
-        paymentToken = IERC20(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.reservationRegistry.paymentToken"
-            )
-        );
-
-        // Read AVS Middleware addresses
-        indexRegistry = IIndexRegistry(
-            stdJson.readAddress(rxp_config_data, ".addresses.indexRegistry")
-        );
-        stakeRegistry = IStakeRegistry(
-            stdJson.readAddress(rxp_config_data, ".addresses.stakeRegistry")
-        );
-        apkRegistry = IBLSApkRegistry(
-            stdJson.readAddress(rxp_config_data, ".addresses.apkRegistry")
-        );
-        socketRegistry = ISocketRegistry(
-            stdJson.readAddress(rxp_config_data, ".addresses.socketRegistry")
-        );
-        serviceManager = IServiceManager(
-            stdJson.readAddress(rxp_config_data, ".addresses.serviceManager")
-        );
-        slashingRegistryCoordinator = ISlashingRegistryCoordinator(
-            stdJson.readAddress(
-                rxp_config_data,
-                ".addresses.slashingRegistryCoordinator"
-            )
-        );
-        avsPauserReg = PauserRegistry(
-            stdJson.readAddress(rxp_config_data, ".addresses.avsPauserReg")
-        );
-    }
-
     function _parseEigenLayerContracts(
         string memory eigenlayerContractsPath
     ) internal {
@@ -846,135 +775,5 @@ contract BaseDeployRxp is DeployTestUtils {
 
         // Write to file
         vm.writeJson(finalJson, outputPath);
-    }
-
-    /// TODO parse existing RXP contracts, currently the proxys are simply 0 addresses atm
-    /// NOTE: uses the same existing paymentToken and strategy
-    function upgradeExistingContracts(
-        bool broadcast,
-        string memory environment
-    ) public {
-        string
-            memory rxpConfigPath = "contracts/script/config/deploy_rxp_contracts.config.json";
-        // both the contracts path and output path are the same
-        string
-            memory rxpContractsPath = "contracts/script/output/deploy_rxp_contracts_output.json";
-        _parseRxpConfig(rxpConfigPath);
-        _parseRxpContracts(rxpContractsPath);
-
-        // Broadcast or prank
-        startOperation(broadcast, msg.sender);
-
-        IEigenDACertVerifier certificateVerifier = IEigenDACertVerifier(
-            address(0)
-        );
-
-        // deploy implementations
-        reservationRegistryImplementation = new ReservationRegistry(
-            IReservationRegistry.ReservationRegistryConstructorParams({
-                permissionController: permissionController,
-                reexecutionEndpoint: reexecutionEndpoint,
-                certificateVerifier: certificateVerifier,
-                indexRegistry: indexRegistry,
-                operatorFeeDistributor: operatorFeeDistributor,
-                paymentToken: paymentToken,
-                epochLengthBlocks: epochLengthBlocks,
-                epochGenesisBlock: block.number,
-                reservationBondAmount: reservationBondAmount
-            })
-        );
-
-        reexecutionEndpointImplementation = new ReexecutionEndpoint(
-            permissionController,
-            reservationRegistry,
-            slashingRegistryCoordinator,
-            indexRegistry,
-            stakeRegistry,
-            paymentToken
-        );
-
-        indexRegistryImplementation = new IndexRegistry(
-            slashingRegistryCoordinator
-        );
-
-        stakeRegistryImplementation = new StakeRegistry(
-            slashingRegistryCoordinator,
-            IDelegationManager(delegationManager),
-            IAVSDirectory(avsDirectory),
-            IAllocationManager(allocationManager)
-        );
-
-        apkRegistryImplementation = new BLSApkRegistry(
-            slashingRegistryCoordinator
-        );
-
-        socketRegistryImplementation = new SocketRegistry(
-            slashingRegistryCoordinator
-        );
-
-        serviceManagerImplementation = new OpenRankManager(
-            IAVSDirectory(avsDirectory),
-            IRewardsCoordinator(rewardsCoordinator),
-            slashingRegistryCoordinator,
-            stakeRegistry,
-            IPermissionController(address(permissionController)),
-            IAllocationManager(allocationManager)
-        );
-
-        slashingRegistryCoordinatorImplementation = new SlashingRegistryCoordinator(
-            stakeRegistry,
-            apkRegistry,
-            indexRegistry,
-            socketRegistry,
-            IAllocationManager(allocationManager),
-            avsPauserReg,
-            "1.0.0"
-        );
-
-        // upgrade and initilize
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(reexecutionEndpoint))),
-            address(reexecutionEndpointImplementation)
-        );
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(reservationRegistry))),
-            address(reservationRegistryImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(indexRegistry))),
-            address(indexRegistryImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(stakeRegistry))),
-            address(stakeRegistryImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(apkRegistry))),
-            address(apkRegistryImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(socketRegistry))),
-            address(socketRegistryImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(payable(address(serviceManager))),
-            address(serviceManagerImplementation)
-        );
-
-        proxyAdmin.upgrade(
-            ITransparentUpgradeableProxy(
-                payable(address(slashingRegistryCoordinator))
-            ),
-            address(slashingRegistryCoordinatorImplementation)
-        );
-
-        // Stop broadcasting or pranking
-        stopOperation(broadcast);
-        _writeOutputJSON(rxpContractsPath);
     }
 }

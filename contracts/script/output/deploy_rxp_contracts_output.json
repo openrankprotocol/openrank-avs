@@ -1,39 +1,39 @@
 {
   "addresses": {
-    "apkRegistry": "0x8f86403A4DE0BB5791fa46B8e795C547942fE4Cf",
-    "avsPauserReg": "0xf5059a5D33d5853360D16C683c16e67980206f36",
-    "emptyContract": "0x851356ae760d987E095750cCeb3bC6014560891C",
-    "indexRegistry": "0x99bbA657f2BbC93c02D617f8bA121cB8Fc104Acf",
+    "apkRegistry": "0xEDCd60E8C616c97eB9322eA84c6D2e04cf59A33C",
+    "avsPauserReg": "0x3712D15287C84ed3CB1fF2E9565BB7457426Fd56",
+    "emptyContract": "0x7fc9E640d59277878a3a3E2094CA756ecab22723",
+    "indexRegistry": "0x2D4Aa3a841EbF6d606bDfd919775238A262729C7",
     "operatorSet": {
-      "rxpStrategy": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1",
-      "underlyingToken": "0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00"
+      "rxpStrategy": "0x0000000000000000000000000000000000000000",
+      "underlyingToken": "0x70921E3A5fc9eF44f01483426E406dF9c99650c2"
     },
-    "permissionController": "0x610178dA211FEF7D417bC0e6FeD39F05609AD788",
-    "proxyAdmin": "0x1613beB3B2C4f22Ee086B2b38C1476A3cE7f78E8",
+    "permissionController": "0x0a1Afea5Ff3c59a26c0b7fc6C5736E95bbb6f5E3",
+    "proxyAdmin": "0xd4F835fc00c784e417E7a080FE8Aa53d25152D1a",
     "reexecutionEndpoint": {
-      "implementation": "0x5f3f1dBD7B74C6B46e8c44f98792A1dAf8d69154",
-      "proxy": "0x95401dc811bb5740090279Ba06cfA8fcF6113778"
+      "implementation": "0x0000000000000000000000000000000000000000",
+      "proxy": "0xa6faB309fC9b50Dc0748730611b85cCf53386B3A"
     },
     "reservationRegistry": {
-      "implementation": "0x1291Be112d480055DaFd8a610b7d1e203891C274",
-      "operatorFeeDistributor": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-      "paymentToken": "0x5eb3Bc0a489C5A8288765d2336659EbCA68FCd00",
-      "proxy": "0x998abeb3E57409262aE5b751f60747921B33613E",
-      "rxpStrategy": "0x61c36a8d610163660E21a8b7359e1Cac0C9133e1"
+      "implementation": "0x0000000000000000000000000000000000000000",
+      "operatorFeeDistributor": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+      "paymentToken": "0x70921E3A5fc9eF44f01483426E406dF9c99650c2",
+      "proxy": "0xE69d6a4C1938168D383F93f41d221EfD4959fa38",
+      "rxpStrategy": "0x0000000000000000000000000000000000000000"
     },
-    "serviceManager": "0x70e0bA845a1A0F2DA3359C97E0285013525FFC49",
-    "slashingRegistryCoordinator": "0x4826533B4897376654Bb4d4AD88B7faFD0C98528",
-    "socketRegistry": "0x9d4454B023096f34B160D6B654540c56A1F81688",
-    "stakeRegistry": "0x0E801D84Fa97b50751Dbf25036d067dCf18858bF"
+    "serviceManager": "0x12d45Bef04eB50e086c49DdFA9762b6594B613F5",
+    "slashingRegistryCoordinator": "0x96D0fCE3B7b1F6081834CE39288dEC2780E88182",
+    "socketRegistry": "0x3a47D3Bd10834A9Cc8092B60C8b18544912Ee8ef",
+    "stakeRegistry": "0x0a1Afea5Ff3c59a26c0b7fc6C5736E95bbb6f5E3"
   },
   "chainInfo": {
     "chainId": 31337,
-    "deploymentBlock": 16
+    "deploymentBlock": 1
   },
   "parameters": {
     "epochGenesisBlock": 1,
     "epochLengthBlocks": 10,
-    "initialOwner": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+    "initialOwner": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
     "maxImagesPerReservation": 2,
     "maxReservations": 30,
     "maximumRequestsPerReservationPerResponseWindow": 1000000000000000000,

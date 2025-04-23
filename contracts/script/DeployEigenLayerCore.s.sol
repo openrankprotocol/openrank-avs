@@ -131,27 +131,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
             writeOutputFunction: _writeOutputJSON
         });
 
-        // CHECK CORRECTNESS OF DEPLOYMENT
-        _verifyContractsPointAtOneAnother(
-            delegationImplementation,
-            strategyManagerImplementation,
-            eigenPodManagerImplementation,
-            rewardsCoordinatorImplementation
-        );
-        _verifyContractsPointAtOneAnother(
-            delegation,
-            strategyManager,
-            eigenPodManager,
-            rewardsCoordinator
-        );
-        _verifyImplementationsSetCorrectly();
-        _verifyInitialOwners();
-        _checkPauserInitializations();
-        _verifyInitializationParams();
-
-        if (broadcast) {
-            _writeOutputJSON();
-        }
+        verifyDeployments("deploy_eigenlayer_core.config.json");
     }
 
     function _deployEigenLayerContracts() internal {
@@ -412,8 +392,6 @@ contract DeployEigenLayerCore is DeployTestUtils {
         strategyBeacon.upgradeTo(address(baseStrategyImplementation));
     }
 
-    // verifyDeployments() is used to verify the correctness of the deployment
-    // forge script script/deploy/deploy_eigenlayer_core.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --sig "verifyDeployments(string memory configFile)" -- deploy_eigenlayer_core.config.json
     function verifyDeployments(string memory configFileName) public {
         _parseConfig(configFileName);
         _parseDeployedOutput();
@@ -766,7 +744,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
 
     function _parseDeployedOutput() internal {
         string
-            memory outputPath = "contracts/script/deploy_eigenlayer_core_output.json";
+            memory outputPath = "contracts/script/output/deploy_eigenlayer_core_output.json";
         string memory json = vm.readFile(outputPath);
 
         // Read addresses
@@ -1033,7 +1011,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
 
         vm.writeJson(
             finalJson,
-            "contracts/script/deploy_eigenlayer_core_output.json"
+            "contracts/script/output/deploy_eigenlayer_core_output.json"
         );
     }
 }
