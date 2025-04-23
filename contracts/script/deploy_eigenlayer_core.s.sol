@@ -33,7 +33,6 @@ import "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 // source .env
 
 // # To deploy and verify our contract
-// forge script script/deploy/deploy_eigenlayer_core.s.sol --rpc-url $RPC_URL --private-key $PRIVATE_KEY --broadcast --sig "run(string memory configFile)" -- deploy_eigenlayer_core.config.json
 contract DeployEigenLayerCore is DeployTestUtils {
     Vm cheats = Vm(VM_ADDRESS);
 
@@ -119,8 +118,10 @@ contract DeployEigenLayerCore is DeployTestUtils {
     uint32 STRATEGY_MANAGER_INIT_WITHDRAWAL_DELAY_BLOCKS;
     uint256 DELEGATION_WITHDRAWAL_DELAY_BLOCKS;
 
-    function run(string memory configFileName, bool broadcast) public virtual {
-        _parseConfig(configFileName);
+    function run() public virtual {
+        bool broadcast = false;
+
+        _parseConfig("deploy_eigenlayer_core.config.json");
 
         // DEPLOY EIGENLAYER CONTRACTS FROM SCRATCH
         broadcastOrPrank({
@@ -591,7 +592,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
     function _parseConfig(string memory configFileName) internal {
         // READ JSON CONFIG DATA
         deployConfigPath = string(
-            bytes(string.concat("script/local/config/", configFileName))
+            bytes(string.concat("contracts/script/config/", configFileName))
         );
         config_data = vm.readFile(deployConfigPath);
         // bytes memory parsedData = vm.parseJson(config_data);
@@ -765,7 +766,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
 
     function _parseDeployedOutput() internal {
         string
-            memory outputPath = "script/local/output/deploy_eigenlayer_core_output.json";
+            memory outputPath = "contracts/script/deploy_eigenlayer_core_output.json";
         string memory json = vm.readFile(outputPath);
 
         // Read addresses
@@ -1030,11 +1031,9 @@ contract DeployEigenLayerCore is DeployTestUtils {
             chain_info_output
         );
 
-        // TODO: should output to different file depending on configFile passed to run()
-        //       so that we don't override mainnet output by deploying to goerli for eg.
         vm.writeJson(
             finalJson,
-            "script/local/output/deploy_eigenlayer_core_output.json"
+            "contracts/script/deploy_eigenlayer_core_output.json"
         );
     }
 }

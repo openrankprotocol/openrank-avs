@@ -10,6 +10,7 @@ via-ir = true
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 remappings = [
+    "eigenda/=contracts/lib/eigenda",
     "@eigenlayer/=contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts/src/",
     "@eigenlayer-scripts/=contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts/script/",
     "@eigenlayer-middleware/=contracts/lib/eigenlayer-middleware/",

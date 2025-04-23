@@ -16,7 +16,7 @@ import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces
 import {PauserRegistry} from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
 import {EmptyContract} from "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 
-import {OpenRankManager} from "../../src/avs/OpenRankManager.sol";
+import {OpenRankManager} from "../../src/OpenRankManager.sol";
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
 import {BLSApkRegistry} from "eigenlayer-middleware/src/BLSApkRegistry.sol";
 import {IndexRegistry} from "eigenlayer-middleware/src/IndexRegistry.sol";

@@ -34,25 +34,15 @@ abstract contract BaseDeploySimpleAVS is DeployAVS, DeployTestUtils {
     IRewardsCoordinator rewardsCoordinator;
     IAVSDirectory avsDirectory;
 
-    string environment;
     string eigenlayerConfigPath;
     string rxConfigPath;
 
     // Strategies for AVS
     IStrategy[] avsStrategies;
 
-    function run(bool broadcast, string memory _environment) public virtual {
-        environment = _environment;
-        eigenlayerConfigPath = string.concat(
-            "script/",
-            environment,
-            "/output/deploy_eigenlayer_core_output.json"
-        );
-        rxConfigPath = string.concat(
-            "script/",
-            environment,
-            "/output/deploy_rxp_contracts_output.json"
-        );
+    function run(bool broadcast) public virtual {
+        eigenlayerConfigPath = "contracts/script/output/deploy_eigenlayer_core_output.json";
+        rxConfigPath = "contracts/script/output/deploy_rxp_contracts_output.json";
 
         // parse eigenlayer contracts
         parseConfig(eigenlayerConfigPath);
@@ -233,11 +223,8 @@ abstract contract BaseDeploySimpleAVS is DeployAVS, DeployTestUtils {
     }
 
     function parseRxConfig() public virtual {
-        string memory inputConfigPath = string.concat(
-            "script/",
-            environment,
-            "/output/deploy_rxp_contracts_output.json"
-        );
+        string
+            memory inputConfigPath = "contracts/script/output/deploy_rxp_contracts_output.json";
         string memory inputConfig = vm.readFile(inputConfigPath);
 
         reservationRegistry = IReservationRegistry(
@@ -316,11 +303,7 @@ abstract contract BaseDeploySimpleAVS is DeployAVS, DeployTestUtils {
         );
         string memory finalJson = vm.serializeString(output, "object", output);
 
-        string memory outputDir = string.concat(
-            "script/",
-            environment,
-            "/output"
-        );
+        string memory outputDir = "contracts/script/output";
         string memory outputPath = string.concat(
             outputDir,
             "/deploy_simple_avs_output.json"

@@ -7,7 +7,7 @@ import {IAVSDirectory, IRewardsCoordinator, IServiceManager, ServiceManagerBase}
 import {ISlashingRegistryCoordinator} from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
 
-contract OpenRankServiceManager is ServiceManagerBase {
+contract OpenRankManager is ServiceManagerBase {
     error ComputeRequestNotFound();
     error ComputeResultAlreadySubmitted();
     error ComputeResultNotFound();
