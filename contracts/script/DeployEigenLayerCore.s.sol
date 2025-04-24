@@ -121,7 +121,9 @@ contract DeployEigenLayerCore is DeployTestUtils {
     function run() public virtual {
         bool broadcast = false;
 
-        _parseConfig("deploy_eigenlayer_core.config.json");
+        string memory fileName = "deploy_eigenlayer_core.json";
+
+        _parseConfig(fileName);
 
         // DEPLOY EIGENLAYER CONTRACTS FROM SCRATCH
         broadcastOrPrank({
@@ -131,7 +133,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
             writeOutputFunction: _writeOutputJSON
         });
 
-        verifyDeployments("deploy_eigenlayer_core.config.json");
+        verifyDeployments(fileName);
     }
 
     function _deployEigenLayerContracts() internal {

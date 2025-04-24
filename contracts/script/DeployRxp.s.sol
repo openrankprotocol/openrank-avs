@@ -43,7 +43,7 @@ import "./common/DeployTestUtils.sol";
 import {IStrategy} from "eigenlayer-middleware/src/StakeRegistry.sol";
 import {OpenRankManager} from "../src/OpenRankManager.sol";
 
-contract DeployRxp is DeployTestUtils {
+abstract DeployRxp is DeployTestUtils {
     using BN254 for *;
     using Strings for uint256;
 
@@ -117,11 +117,11 @@ contract DeployRxp is DeployTestUtils {
 
     function run() public {
         string
-            memory rxpConfigPath = "contracts/script/config/deploy_rxp_contracts.config.json";
+            memory rxpConfigPath = "contracts/script/config/deploy_rxp_contracts.json";
         string
-            memory eigenlayerContractsPath = "contracts/script/output/deploy_eigenlayer_core_output.json";
+            memory eigenlayerContractsPath = "contracts/script/output/deploy_eigenlayer_core.json";
         string
-            memory outputPath = "contracts/script/output/deploy_rxp_contracts_output.json";
+            memory outputPath = "contracts/script/output/deploy_rxp_contracts.json";
 
         _parseEigenLayerContracts(eigenlayerContractsPath);
         _parseRxpConfig(rxpConfigPath);
@@ -504,6 +504,10 @@ contract DeployRxp is DeployTestUtils {
             config_data,
             ".ReservationRegistry.reservationBondAmount"
         );
+    }
+
+    function getServiceManagerImplementation() public returns (IServiceManager) {
+
     }
 
     function _parseEigenLayerContracts(
