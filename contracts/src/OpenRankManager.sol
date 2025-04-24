@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IAllocationManager} from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {IPermissionController} from "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
-import {IAVSDirectory, IRewardsCoordinator, IServiceManager, ServiceManagerBase} from "eigenlayer-middleware/src/ServiceManagerBase.sol";
-import {ISlashingRegistryCoordinator} from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import {IAllocationManager} from
+    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import {IPermissionController} from
+    "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
+import {
+    IAVSDirectory,
+    IRewardsCoordinator,
+    IServiceManager,
+    ServiceManagerBase
+} from "eigenlayer-middleware/src/ServiceManagerBase.sol";
+import {ISlashingRegistryCoordinator} from
+    "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry} from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
 
 contract OpenRankManager is ServiceManagerBase {
@@ -79,27 +87,12 @@ contract OpenRankManager is ServiceManagerBase {
     mapping(uint256 => MetaChallenge) metaChallenges;
     mapping(uint256 => bool) metaJobsFinalized;
 
-    event ComputeRequestEvent(
-        uint256 indexed computeId,
-        bytes32 trust_id,
-        bytes32 seed_id
-    );
-    event ComputeResultEvent(
-        uint256 indexed computeId,
-        bytes32 commitment,
-        bytes32 scores_id
-    );
+    event ComputeRequestEvent(uint256 indexed computeId, bytes32 trust_id, bytes32 seed_id);
+    event ComputeResultEvent(uint256 indexed computeId, bytes32 commitment, bytes32 scores_id);
     event ChallengeEvent(uint256 indexed computeId);
     event JobFinalized(uint256 indexed computeId);
-    event MetaComputeRequestEvent(
-        uint256 indexed computeId,
-        bytes32 jobDescriptionId
-    );
-    event MetaComputeResultEvent(
-        uint256 indexed computeId,
-        bytes32 commitment,
-        bytes32 resultsId
-    );
+    event MetaComputeRequestEvent(uint256 indexed computeId, bytes32 jobDescriptionId);
+    event MetaComputeResultEvent(uint256 indexed computeId, bytes32 commitment, bytes32 resultsId);
     event MetaChallengeEvent(uint256 indexed computeId, uint256 subJobId);
     event MetaJobFinalized(uint256 indexed computeId);
 
@@ -121,10 +114,7 @@ contract OpenRankManager is ServiceManagerBase {
         )
     {}
 
-    function initialize(
-        address initialOwner,
-        address _rewardsInitiator
-    ) external initializer {
+    function initialize(address initialOwner, address _rewardsInitiator) external initializer {
         __ServiceManagerBase_init(initialOwner, _rewardsInitiator);
 
         idCounter = 1;
@@ -189,7 +179,9 @@ contract OpenRankManager is ServiceManagerBase {
         return true;
     }
 
-    function submitChallenge(uint256 computeId) external returns (bool) {
+    function submitChallenge(
+        uint256 computeId
+    ) external returns (bool) {
         if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -200,15 +192,12 @@ contract OpenRankManager is ServiceManagerBase {
             revert ComputeResultNotFound();
         }
 
-        uint256 computeDiff = block.timestamp -
-            computeResults[computeId].timestamp;
+        uint256 computeDiff = block.timestamp - computeResults[computeId].timestamp;
         if (computeDiff > CHALLENGE_WINDOW) {
             revert ChallengePeriodExpired();
         } else {
-            Challenge memory challenge = Challenge({
-                challenger: msg.sender,
-                timestamp: block.timestamp
-            });
+            Challenge memory challenge =
+                Challenge({challenger: msg.sender, timestamp: block.timestamp});
             challenges[computeId] = challenge;
             jobsFinalized[computeId] = true;
 
@@ -218,7 +207,9 @@ contract OpenRankManager is ServiceManagerBase {
         }
     }
 
-    function finalizeJob(uint256 computeId) external returns (bool) {
+    function finalizeJob(
+        uint256 computeId
+    ) external returns (bool) {
         if (jobsFinalized[computeId]) {
             revert JobAlreadyFinalized();
         }
@@ -226,12 +217,8 @@ contract OpenRankManager is ServiceManagerBase {
             revert ComputeResultNotFound();
         }
 
-        uint256 computeDiff = block.timestamp -
-            computeResults[computeId].timestamp;
-        if (
-            computeDiff > CHALLENGE_WINDOW &&
-            challenges[computeId].challenger == address(0x0)
-        ) {
+        uint256 computeDiff = block.timestamp - computeResults[computeId].timestamp;
+        if (computeDiff > CHALLENGE_WINDOW && challenges[computeId].challenger == address(0x0)) {
             jobsFinalized[computeId] = true;
 
             emit JobFinalized(computeId);
@@ -295,10 +282,7 @@ contract OpenRankManager is ServiceManagerBase {
         return true;
     }
 
-    function submitMetaChallenge(
-        uint256 computeId,
-        uint256 subJobId
-    ) external returns (bool) {
+    function submitMetaChallenge(uint256 computeId, uint256 subJobId) external returns (bool) {
         if (!allowlistedChallengers[msg.sender]) {
             revert CallerNotWhitelisted();
         }
@@ -309,8 +293,7 @@ contract OpenRankManager is ServiceManagerBase {
             revert ComputeResultNotFound();
         }
 
-        uint256 computeDiff = block.timestamp -
-            metaComputeResults[computeId].timestamp;
+        uint256 computeDiff = block.timestamp - metaComputeResults[computeId].timestamp;
         if (computeDiff > CHALLENGE_WINDOW) {
             revert ChallengePeriodExpired();
         } else {
@@ -329,7 +312,9 @@ contract OpenRankManager is ServiceManagerBase {
         }
     }
 
-    function finalizeMetaJob(uint256 computeId) external returns (bool) {
+    function finalizeMetaJob(
+        uint256 computeId
+    ) external returns (bool) {
         if (metaJobsFinalized[computeId]) {
             revert JobAlreadyFinalized();
         }
@@ -337,12 +322,9 @@ contract OpenRankManager is ServiceManagerBase {
             revert ComputeResultNotFound();
         }
 
-        uint256 computeDiff = block.timestamp -
-            metaComputeResults[computeId].timestamp;
-        if (
-            computeDiff > CHALLENGE_WINDOW &&
-            metaChallenges[computeId].challenger == address(0x0)
-        ) {
+        uint256 computeDiff = block.timestamp - metaComputeResults[computeId].timestamp;
+        if (computeDiff > CHALLENGE_WINDOW && metaChallenges[computeId].challenger == address(0x0))
+        {
             metaJobsFinalized[computeId] = true;
 
             emit MetaJobFinalized(computeId);
@@ -367,11 +349,15 @@ contract OpenRankManager is ServiceManagerBase {
     // Setters
     // ---------------------------------------------------------------
 
-    function updateChallengeWindow(uint64 challengeWindow) public onlyOwner {
+    function updateChallengeWindow(
+        uint64 challengeWindow
+    ) public onlyOwner {
         CHALLENGE_WINDOW = challengeWindow;
     }
 
-    function updateRxPWindow(uint64 rxpWindow) public onlyOwner {
+    function updateRxPWindow(
+        uint64 rxpWindow
+    ) public onlyOwner {
         RXP_WINDOW = rxpWindow;
     }
 }

@@ -85,7 +85,10 @@ interface IReexecutionEndpoint {
      * @param stake The amount of stake backing the response
      */
     event OperatorResponse(
-        uint256 indexed requestIndex, address indexed operator, bytes32 indexed response, uint256 stake
+        uint256 indexed requestIndex,
+        address indexed operator,
+        bytes32 indexed response,
+        uint256 stake
     );
 
     /**
@@ -210,7 +213,10 @@ interface IReexecutionEndpoint {
      * @return requestIndex The index of the created request
      * @dev Only callable by the AVS who made the original reservation
      */
-    function requestReexecution(uint32 imageID, bytes calldata requestData) external returns (uint256 requestIndex);
+    function requestReexecution(
+        uint32 imageID,
+        bytes calldata requestData
+    ) external returns (uint256 requestIndex);
 
     /**
      * @notice Responds to a re-execution request
@@ -219,7 +225,12 @@ interface IReexecutionEndpoint {
      * @param responseData The 32-byte data returned by the re-execution
      * @param signature The BLS signature on the response
      */
-    function respond(address operator, uint256 requestIndex, bytes32 responseData, bytes calldata signature) external;
+    function respond(
+        address operator,
+        uint256 requestIndex,
+        bytes32 responseData,
+        bytes calldata signature
+    ) external;
 
     /**
      * @notice Finalizes a re-execution request
@@ -273,7 +284,10 @@ interface IReexecutionEndpoint {
      * @param operator The address of the operator
      * @return hasResponded Whether the operator has responded
      */
-    function hasOperatorResponded(uint256 requestIndex, address operator) external view returns (bool hasResponded);
+    function hasOperatorResponded(
+        uint256 requestIndex,
+        address operator
+    ) external view returns (bool hasResponded);
 
     /**
      * @notice Gets the response data from an operator for a request
@@ -281,7 +295,10 @@ interface IReexecutionEndpoint {
      * @param operator The address of the operator
      * @return response The 32-byte response data
      */
-    function getResponse(uint256 requestIndex, address operator) external view returns (bytes32 response);
+    function getResponse(
+        uint256 requestIndex,
+        address operator
+    ) external view returns (bytes32 response);
 
     /**
      * @notice View implementation of getFinalizedResponse without modifying state

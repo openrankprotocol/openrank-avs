@@ -83,7 +83,9 @@ contract ReservationRegistry is
     }
 
     /// @inheritdoc IReservationRegistry
-    function setMaxReservations(uint256 _maxReservations) external onlyOwner {
+    function setMaxReservations(
+        uint256 _maxReservations
+    ) external onlyOwner {
         maxReservations = _maxReservations;
     }
 
@@ -94,14 +96,8 @@ contract ReservationRegistry is
         address avs,
         uint256 transferAmount
     ) external checkCanCall(avs) returns (uint256 reservationID) {
-        require(
-            activeReservationCount < maxReservations,
-            MaxReservationsReached()
-        );
-        require(
-            transferAmount >= getReservationTransferAmount(),
-            InsufficientPayment()
-        );
+        require(activeReservationCount < maxReservations, MaxReservationsReached());
+        require(transferAmount >= getReservationTransferAmount(), InsufficientPayment());
 
         // Create reservation
         reservationID = nextReservationId;
@@ -117,11 +113,7 @@ contract ReservationRegistry is
         emit ReservationCreated(avs, reservationID, transferAmount);
 
         // Transfer tokens from sender to this contract
-        paymentToken.safeTransferFrom(
-            msg.sender,
-            address(this),
-            transferAmount
-        );
+        paymentToken.safeTransferFrom(msg.sender, address(this), transferAmount);
     }
 
     /// @inheritdoc IReservationRegistry
@@ -133,8 +125,7 @@ contract ReservationRegistry is
         require(reservation.active, ReservationNotActive());
         require(_checkCanCall(reservation.avs), InvalidPermissions());
         require(
-            _reservationImageIDs[reservationID].length() <
-                maxImagesPerReservation,
+            _reservationImageIDs[reservationID].length() < maxImagesPerReservation,
             MaxImagesPerReservationReached()
         );
         require(imageDACerts.length <= MAX_IMAGE_DA_CERTS, ImageTooLarge());
@@ -160,10 +151,7 @@ contract ReservationRegistry is
         Reservation memory reservation = _reservations[reservationID];
         require(reservation.active, ReservationNotActive());
         require(_checkCanCall(reservation.avs), InvalidPermissions());
-        require(
-            _reservationImageIDs[reservationID].remove(imageID),
-            ImageNotAdded()
-        );
+        require(_reservationImageIDs[reservationID].remove(imageID), ImageNotAdded());
 
         // TODO: COMMENT OUT IMPORTANT CHECK FOR DEVNET
         // require(reexecutionEndpoint.getRequestsInCurrentWindow(reservationID) == 0, RequestsAreActive());
@@ -185,7 +173,9 @@ contract ReservationRegistry is
     }
 
     /// @inheritdoc IReservationRegistry
-    function deductFees(uint256[] calldata reservationIDs) external {
+    function deductFees(
+        uint256[] calldata reservationIDs
+    ) external {
         uint256 totalFees = 0;
 
         for (uint256 i = 0; i < reservationIDs.length; i++) {
@@ -200,16 +190,14 @@ contract ReservationRegistry is
             // Check if it's time to deduct fees
             uint32 epoch = currentEpoch();
             uint256 numPassedEpochs = epoch - reservation.lastDeductionEpoch;
-            uint32 currentNumOperators = indexRegistry
-                .totalOperatorsForQuorumAtBlockNumber({
-                    quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
-                    blockNumber: uint32(currentEpochStartBlock())
-                });
+            uint32 currentNumOperators = indexRegistry.totalOperatorsForQuorumAtBlockNumber({
+                quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
+                blockNumber: uint32(currentEpochStartBlock())
+            });
 
             if (numPassedEpochs > 0) {
-                uint256 billAmount = resourceCostPerOperatorPerEpoch *
-                    currentNumOperators *
-                    numPassedEpochs;
+                uint256 billAmount =
+                    resourceCostPerOperatorPerEpoch * currentNumOperators * numPassedEpochs;
 
                 if (billAmount >= reservation.balance) {
                     // Deactivate reservation due to insufficient balance
@@ -227,10 +215,7 @@ contract ReservationRegistry is
                     totalFees += billAmount;
 
                     emit ReservationFeesDeducted(reservationID, billAmount);
-                    emit ReservationBalanceUpdated(
-                        reservationID,
-                        reservation.balance
-                    );
+                    emit ReservationBalanceUpdated(reservationID, reservation.balance);
                 }
             }
         }
@@ -243,7 +228,9 @@ contract ReservationRegistry is
 
     /// INTERNAL FUNCTIONS
 
-    function _verifyImageCertificates(Image calldata image) internal view {
+    function _verifyImageCertificates(
+        Image calldata image
+    ) internal view {
         // /// Verify image certificate
         // certificateVerifier.verifyDACertV2({
         //     batchHeader: image.imageDACert.batchHeader,
@@ -256,7 +243,9 @@ contract ReservationRegistry is
     /// VIEW FUNCTIONS
 
     /// @inheritdoc IReservationRegistry
-    function isImageAdded(uint32 imageID) external view returns (bool isValid) {
+    function isImageAdded(
+        uint32 imageID
+    ) external view returns (bool isValid) {
         Image memory image = _images[imageID];
         if (image.creationTime == 0) {
             return false;
@@ -267,21 +256,15 @@ contract ReservationRegistry is
     /// @inheritdoc IReservationRegistry
     function getReservationTransferAmount() public view returns (uint256) {
         /// TODO: use more efficient interface on IndexRegistry when internal function is public
-        uint32 currentNumOperators = indexRegistry
-            .totalOperatorsForQuorumAtBlockNumber({
-                quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
-                blockNumber: uint32(currentEpochStartBlock())
-            });
-        return
-            prepaidReservationFee(currentNumOperators) + reservationBondAmount;
+        uint32 currentNumOperators = indexRegistry.totalOperatorsForQuorumAtBlockNumber({
+            quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
+            blockNumber: uint32(currentEpochStartBlock())
+        });
+        return prepaidReservationFee(currentNumOperators) + reservationBondAmount;
     }
 
     /// @inheritdoc IReservationRegistry
-    function getActiveReservationIds()
-        external
-        view
-        returns (uint256[] memory)
-    {
+    function getActiveReservationIds() external view returns (uint256[] memory) {
         return _activeReservationIds.values();
     }
 
@@ -295,14 +278,7 @@ contract ReservationRegistry is
     /// @inheritdoc IReservationRegistry
     function getReservationsForAVS(
         address avs
-    )
-        external
-        view
-        returns (
-            uint256[] memory reservationIDs,
-            Reservation[] memory reservations
-        )
-    {
+    ) external view returns (uint256[] memory reservationIDs, Reservation[] memory reservations) {
         uint256[] memory activeReservationIds = _activeReservationIds.values();
         uint256 activeCount = activeReservationIds.length;
         uint256[] memory tempReservationIds = new uint256[](activeCount);
@@ -328,8 +304,7 @@ contract ReservationRegistry is
     function getImages(
         uint256 reservationID
     ) external view returns (uint32[] memory imageIDs, Image[] memory images) {
-        uint256[] memory uintImageIDs = _reservationImageIDs[reservationID]
-            .values();
+        uint256[] memory uintImageIDs = _reservationImageIDs[reservationID].values();
         imageIDs = new uint32[](uintImageIDs.length);
         for (uint256 i = 0; i < uintImageIDs.length; i++) {
             imageIDs[i] = uint32(uintImageIDs[i]);
@@ -359,20 +334,14 @@ contract ReservationRegistry is
     function prepaidReservationFee(
         uint32 numOperators
     ) public view returns (uint256 fee) {
-        return
-            resourceCostPerOperatorPerEpoch *
-            numOperators *
-            prepaidBilledEpochs;
+        return resourceCostPerOperatorPerEpoch * numOperators * prepaidBilledEpochs;
     }
 
     /// @inheritdoc IReservationRegistry
     function getEpochFromBlocknumber(
         uint256 blocknumber
     ) public view returns (uint32) {
-        require(
-            blocknumber >= epochGenesisBlock,
-            "Block number before genesis"
-        );
+        require(blocknumber >= epochGenesisBlock, "Block number before genesis");
         return uint32((blocknumber - epochGenesisBlock) / epochLengthBlocks);
     }
 

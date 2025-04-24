@@ -75,7 +75,9 @@ interface IReservationRegistry {
      * @param reservationID The ID of the reservation
      * @param initialBalance The initial balance of the reservation
      */
-    event ReservationCreated(address indexed reserver, uint256 indexed reservationID, uint256 initialBalance);
+    event ReservationCreated(
+        address indexed reserver, uint256 indexed reservationID, uint256 initialBalance
+    );
 
     /**
      * @notice Event emitted when an image is added to a reservation
@@ -278,7 +280,10 @@ interface IReservationRegistry {
      * @param imageDACerts The EigenDA certificates that compose the image
      * @return imageID The ID of the image
      */
-    function addImage(uint256 reservationID, bytes[] calldata imageDACerts) external returns (uint32 imageID);
+    function addImage(
+        uint256 reservationID,
+        bytes[] calldata imageDACerts
+    ) external returns (uint32 imageID);
 
     /**
      * @notice Removes an image from a reservation

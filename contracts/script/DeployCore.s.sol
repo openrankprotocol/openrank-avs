@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: BUSL-1.1
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
 import "@openzeppelin/contracts/proxy/beacon/UpgradeableBeacon.sol";
@@ -33,7 +33,7 @@ import "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 // source .env
 
 // # To deploy and verify our contract
-contract DeployEigenLayerCore is DeployTestUtils {
+contract DeployCore is DeployTestUtils {
     Vm cheats = Vm(VM_ADDRESS);
 
     // struct used to encode token info in config file
@@ -118,22 +118,20 @@ contract DeployEigenLayerCore is DeployTestUtils {
     uint32 STRATEGY_MANAGER_INIT_WITHDRAWAL_DELAY_BLOCKS;
     uint256 DELEGATION_WITHDRAWAL_DELAY_BLOCKS;
 
-    function run() public virtual {
-        bool broadcast = false;
+    function run() public {
+        string memory configFile = "deploy_eigenlayer_core.json";
 
-        string memory fileName = "deploy_eigenlayer_core.json";
+        console.log("DeployCore sender: ", msg.sender);
+        console.log("DeployCore: ", address(this));
 
-        _parseConfig(fileName);
-
-        // DEPLOY EIGENLAYER CONTRACTS FROM SCRATCH
+        _parseConfig(configFile);
         broadcastOrPrank({
-            broadcast: broadcast,
+            broadcast: false,
             prankAddress: msg.sender,
-            deployFunction: _deployEigenLayerContracts,
-            writeOutputFunction: _writeOutputJSON
+            deployFunction: _deployEigenLayerContracts
         });
-
-        verifyDeployments(fileName);
+        _writeOutputJSON();
+        // verifyDeployments(configFile);
     }
 
     function _deployEigenLayerContracts() internal {
@@ -511,6 +509,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
             eigenLayerProxyAdmin.owner() == executorMultisig,
             "eigenLayerProxyAdmin: owner not set correctly"
         );
+
         require(
             eigenPodBeacon.owner() == executorMultisig,
             "eigenPodBeacon: owner not set correctly"
@@ -713,6 +712,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
             config_data,
             ".multisig_addresses.executorMultisig"
         );
+
         operationsMultisig = stdJson.readAddress(
             config_data,
             ".multisig_addresses.operationsMultisig"
@@ -746,7 +746,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
 
     function _parseDeployedOutput() internal {
         string
-            memory outputPath = "contracts/script/output/deploy_eigenlayer_core_output.json";
+            memory outputPath = "contracts/script/output/deploy_eigenlayer_core.json";
         string memory json = vm.readFile(outputPath);
 
         // Read addresses
@@ -1013,7 +1013,7 @@ contract DeployEigenLayerCore is DeployTestUtils {
 
         vm.writeJson(
             finalJson,
-            "contracts/script/output/deploy_eigenlayer_core_output.json"
+            "contracts/script/output/deploy_eigenlayer_core.json"
         );
     }
 }

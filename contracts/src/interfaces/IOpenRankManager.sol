@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-interface IOpenRankServiceManager {
+interface IOpenRankManager {
     function submitComputeRequest(
         bytes32 trustId,
         bytes32 seedId
@@ -13,9 +13,13 @@ interface IOpenRankServiceManager {
         bytes32 scoresId
     ) external returns (bool);
 
-    function submitChallenge(uint256 computeId) external returns (bool);
+    function submitChallenge(
+        uint256 computeId
+    ) external returns (bool);
 
-    function finalizeJob(uint256 computeId) external returns (bool);
+    function finalizeJob(
+        uint256 computeId
+    ) external returns (bool);
 
     function owner() external returns (address);
 

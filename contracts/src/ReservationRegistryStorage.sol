@@ -47,10 +47,8 @@ abstract contract ReservationRegistryStorage is IReservationRegistry {
     uint32 public nextImageId;
 
     // Reservations and images
-    mapping(uint256 reservationID => Reservation reservation)
-        internal _reservations;
-    mapping(uint256 reservationID => EnumerableSet.UintSet imageIDs)
-        internal _reservationImageIDs;
+    mapping(uint256 reservationID => Reservation reservation) internal _reservations;
+    mapping(uint256 reservationID => EnumerableSet.UintSet imageIDs) internal _reservationImageIDs;
     mapping(uint32 imageID => Image image) internal _images;
 
     // Set to track active reservation IDs

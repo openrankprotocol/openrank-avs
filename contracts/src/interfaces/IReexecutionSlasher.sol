@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: BUSL-1.1
 pragma solidity ^0.8.27;
 
-import { ICertificateVerifier } from "./ICertificateVerifier.sol";
-import { BLSSignatureChecker, IBLSSignatureChecker } from "eigenlayer-middleware/src/BLSSignatureChecker.sol";
+import {ICertificateVerifier} from "./ICertificateVerifier.sol";
+import {
+    BLSSignatureChecker,
+    IBLSSignatureChecker
+} from "eigenlayer-middleware/src/BLSSignatureChecker.sol";
 
 interface IReexecutionSlasher {
     error InvalidSigner();

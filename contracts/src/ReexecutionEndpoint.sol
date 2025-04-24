@@ -64,7 +64,8 @@ contract ReexecutionEndpoint is
         responseFeePerOperator = _responseFeePerOperator;
         reexecutionFeePerOperator = _reexecutionFeePerOperator;
         responseWindowBlocks = _responseWindowBlocks;
-        maximumRequestsPerReservationPerResponseWindow = _maximumRequestsPerReservationPerResponseWindow;
+        maximumRequestsPerReservationPerResponseWindow =
+            _maximumRequestsPerReservationPerResponseWindow;
 
         _transferOwnership(initialOwner);
     }
@@ -96,7 +97,8 @@ contract ReexecutionEndpoint is
     function setMaximumRequestsPerReservationPerResponseWindow(
         uint256 _maximumRequestsPerReservationPerResponseWindow
     ) external onlyOwner {
-        maximumRequestsPerReservationPerResponseWindow = _maximumRequestsPerReservationPerResponseWindow;
+        maximumRequestsPerReservationPerResponseWindow =
+            _maximumRequestsPerReservationPerResponseWindow;
     }
 
     /// CORE LOGIC
@@ -106,34 +108,25 @@ contract ReexecutionEndpoint is
         uint32 imageID,
         bytes calldata requestData
     ) external returns (uint256 requestIndex) {
-        uint256 reservationID = reservationRegistry.getReservationIDForImageID(
-            imageID
-        );
-        IReservationRegistry.Reservation
-            memory reservation = reservationRegistry.getReservation(
-                reservationID
-            );
+        uint256 reservationID = reservationRegistry.getReservationIDForImageID(imageID);
+        IReservationRegistry.Reservation memory reservation =
+            reservationRegistry.getReservation(reservationID);
         require(_checkCanCall(reservation.avs), InvalidPermissions());
         // Check if the image is reserved and has not exceeded its usage limit
         require(reservationRegistry.isImageAdded(imageID), InvalidRequest());
 
         // Check if the reservation has not exceeded the maximum requests per response window
-        uint256 currentRequests = _cumulativeReservationRequests[reservationID]
-            .latest();
+        uint256 currentRequests = _cumulativeReservationRequests[reservationID].latest();
         {
-            uint32 windowStartBlock = uint32(block.number) -
-                uint32(responseWindowBlocks);
+            uint32 windowStartBlock = uint32(block.number) - uint32(responseWindowBlocks);
             // Get the number of requests at the start of the window
-            uint256 requestsAtWindowStart = _cumulativeReservationRequests[
-                reservationID
-            ].upperLookup(windowStartBlock);
+            uint256 requestsAtWindowStart =
+                _cumulativeReservationRequests[reservationID].upperLookup(windowStartBlock);
             // Calculate the number of requests in the current window
-            uint256 requestsInCurrentWindow = currentRequests -
-                requestsAtWindowStart;
+            uint256 requestsInCurrentWindow = currentRequests - requestsAtWindowStart;
             // Check if adding one more request would exceed the maximum
             require(
-                requestsInCurrentWindow <=
-                    maximumRequestsPerReservationPerResponseWindow,
+                requestsInCurrentWindow <= maximumRequestsPerReservationPerResponseWindow,
                 MaxRequestsPerReservationExceeded()
             );
         }
@@ -141,15 +134,11 @@ contract ReexecutionEndpoint is
         // Create the request
         requestIndex = _requests.length;
 
-        uint32 epochStartBlocknumber = uint32(
-            reservationRegistry.currentEpochStartBlock()
-        );
+        uint32 epochStartBlocknumber = uint32(reservationRegistry.currentEpochStartBlock());
         uint96 totalStakeWeight = _getTotalStakeWeight(epochStartBlocknumber);
 
         // Calculate required fee
-        (uint256 requiredFee, uint256 feePerOperator) = getRequestFee(
-            epochStartBlocknumber
-        );
+        (uint256 requiredFee, uint256 feePerOperator) = getRequestFee(epochStartBlocknumber);
 
         _requests.push(
             ReexecutionRequest({
@@ -167,16 +156,10 @@ contract ReexecutionEndpoint is
         // Update the request history for this reservation
         // Increment the cumulative request count and store it with the current block number
         _cumulativeReservationRequests[reservationID].push(
-            uint32(block.number),
-            currentRequests + 1
+            uint32(block.number), currentRequests + 1
         );
         emit ReexecutionRequestCreated(
-            requestIndex,
-            reservation.avs,
-            reservationID,
-            imageID,
-            requestData,
-            uint32(block.number)
+            requestIndex, reservation.avs, reservationID, imageID, requestData, uint32(block.number)
         );
 
         // Transfer tokens from user to this contract
@@ -195,45 +178,31 @@ contract ReexecutionEndpoint is
 
         require(request.status == RequestStatus.PENDING, RequestNotPending());
         require(
-            block.number <= request.requestBlock + responseWindowBlocks,
-            ResponseDeadlinePassed()
+            block.number <= request.requestBlock + responseWindowBlocks, ResponseDeadlinePassed()
         );
         _verifyOperatorRegisteredDuringRequest(request.requestBlock, operator);
 
         bytes32 operatorAddressAsBytes32 = bytes32(uint256(uint160(operator)));
         require(
-            !_operatorResponses[requestIndex].contains(
-                operatorAddressAsBytes32
-            ),
+            !_operatorResponses[requestIndex].contains(operatorAddressAsBytes32),
             OperatorAlreadyResponded()
         );
 
-        uint256 operatorStakeWeight = uint256(
-            _getOperatorWeight(request.epochStartBlockNumber, operator)
-        );
+        uint256 operatorStakeWeight =
+            uint256(_getOperatorWeight(request.epochStartBlockNumber, operator));
 
         // Store the response data
-        _operatorResponses[requestIndex].set(
-            operatorAddressAsBytes32,
-            responseData
-        );
-        _responseStakeWeights[requestIndex][
-            responseData
-        ] += operatorStakeWeight;
+        _operatorResponses[requestIndex].set(operatorAddressAsBytes32, responseData);
+        _responseStakeWeights[requestIndex][responseData] += operatorStakeWeight;
 
         // compare stake weight to current largest stake weighted response
         // update current largest stake weighted response if the updated stake weight is greater
-        uint256 currLargestStakeWeight = _responseStakeWeights[requestIndex][
-            request.finalResponse
-        ];
-        if (
-            _responseStakeWeights[requestIndex][responseData] >
-            currLargestStakeWeight
-        ) {
+        uint256 currLargestStakeWeight = _responseStakeWeights[requestIndex][request.finalResponse];
+        if (_responseStakeWeights[requestIndex][responseData] > currLargestStakeWeight) {
             request.finalResponse = responseData;
         }
         // check if finalized based on updated stake weight
-        (RequestStatus status, ) = _getFinalizedResponse(request, requestIndex);
+        (RequestStatus status,) = _getFinalizedResponse(request, requestIndex);
         if (status == RequestStatus.FINALIZED) {
             request.status = RequestStatus.FINALIZED;
         }
@@ -242,12 +211,7 @@ contract ReexecutionEndpoint is
         paymentToken.safeTransfer(operator, request.feePerOperator);
 
         // Emit event
-        emit OperatorResponse(
-            requestIndex,
-            operator,
-            responseData,
-            operatorStakeWeight
-        );
+        emit OperatorResponse(requestIndex, operator, responseData, operatorStakeWeight);
     }
 
     /// @inheritdoc IReexecutionEndpoint
@@ -256,10 +220,7 @@ contract ReexecutionEndpoint is
     ) external returns (RequestStatus status, bytes32 finalizedResponse) {
         require(requestIndex < _requests.length, InvalidRequestIndex());
         ReexecutionRequest storage request = _requests[requestIndex];
-        (status, finalizedResponse) = _getFinalizedResponse(
-            request,
-            requestIndex
-        );
+        (status, finalizedResponse) = _getFinalizedResponse(request, requestIndex);
         request.status = status;
         request.finalResponse = finalizedResponse;
     }
@@ -275,18 +236,12 @@ contract ReexecutionEndpoint is
         operatorIds[0] = slashingRegistryCoordinator.getOperatorId(operator);
 
         uint32[] memory quorumBitmapIndices = slashingRegistryCoordinator
-            .getQuorumBitmapIndicesAtBlockNumber({
-                blockNumber: requestBlock,
-                operatorIds: operatorIds
-            });
+            .getQuorumBitmapIndicesAtBlockNumber({blockNumber: requestBlock, operatorIds: operatorIds});
 
         // read operators quorum bitmap at
-        uint192 quorumBitmap = slashingRegistryCoordinator
-            .getQuorumBitmapAtBlockNumberByIndex(
-                operatorIds[0],
-                requestBlock,
-                quorumBitmapIndices[0]
-            );
+        uint192 quorumBitmap = slashingRegistryCoordinator.getQuorumBitmapAtBlockNumberByIndex(
+            operatorIds[0], requestBlock, quorumBitmapIndices[0]
+        );
 
         // bitwise AND with 1 to check if operator is registered for quorum 0
         require(quorumBitmap & 1 == 1, OperatorNotRegistered());
@@ -299,18 +254,13 @@ contract ReexecutionEndpoint is
         require(request.status != RequestStatus.NONEXISTANT, InvalidRequest());
 
         // If request is already finalized or abstained, return the status and response
-        if (
-            request.status == RequestStatus.FINALIZED ||
-            request.status == RequestStatus.ABSTAIN
-        ) {
+        if (request.status == RequestStatus.FINALIZED || request.status == RequestStatus.ABSTAIN) {
             return (request.status, request.finalResponse);
         }
 
         // Check if pending request can be finalized
         // TODO: round up on totalStakeWeight / 2?
-        uint256 majorityStakeWeight = _responseStakeWeights[requestIndex][
-            request.finalResponse
-        ];
+        uint256 majorityStakeWeight = _responseStakeWeights[requestIndex][request.finalResponse];
         if (majorityStakeWeight > (request.totalStakeWeight / 2)) {
             return (RequestStatus.FINALIZED, request.finalResponse);
         }
@@ -330,11 +280,10 @@ contract ReexecutionEndpoint is
     ) internal view returns (uint96 totalStake) {
         bytes memory quorumNumbers = new bytes(1);
         quorumNumbers[0] = bytes1(RxpConstants.OPERATOR_SET_ID_UINT8);
-        uint32[] memory indices = stakeRegistry
-            .getTotalStakeIndicesAtBlockNumber({
-                blockNumber: blocknumber,
-                quorumNumbers: quorumNumbers
-            });
+        uint32[] memory indices = stakeRegistry.getTotalStakeIndicesAtBlockNumber({
+            blockNumber: blocknumber,
+            quorumNumbers: quorumNumbers
+        });
         totalStake = stakeRegistry.getTotalStakeAtBlockNumberFromIndex({
             quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
             blockNumber: blocknumber,
@@ -347,13 +296,9 @@ contract ReexecutionEndpoint is
         uint32 blocknumber,
         address operator
     ) internal view returns (uint96 operatorStakeWeight) {
-        bytes32 operatorId = slashingRegistryCoordinator.getOperatorId(
-            operator
-        );
+        bytes32 operatorId = slashingRegistryCoordinator.getOperatorId(operator);
         operatorStakeWeight = stakeRegistry.getStakeAtBlockNumber(
-            operatorId,
-            RxpConstants.OPERATOR_SET_ID_UINT8,
-            blocknumber
+            operatorId, RxpConstants.OPERATOR_SET_ID_UINT8, blocknumber
         );
     }
 
@@ -380,11 +325,10 @@ contract ReexecutionEndpoint is
         uint32 blockNumber
     ) public view returns (uint256 requiredFee, uint256 feePerOperator) {
         // TODO: use binary search lookup?
-        uint256 numOperators = indexRegistry
-            .totalOperatorsForQuorumAtBlockNumber({
-                quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
-                blockNumber: blockNumber
-            });
+        uint256 numOperators = indexRegistry.totalOperatorsForQuorumAtBlockNumber({
+            quorumNumber: RxpConstants.OPERATOR_SET_ID_UINT8,
+            blockNumber: blockNumber
+        });
         feePerOperator = responseFeePerOperator + reexecutionFeePerOperator;
         // scale the fee based on the number of requests in the current window
         requiredFee = feePerOperator * numOperators;
@@ -402,8 +346,7 @@ contract ReexecutionEndpoint is
     ) public view returns (bool) {
         require(requestIndex < _requests.length, InvalidRequestIndex());
         bytes32 operatorAddressAsBytes32 = bytes32(uint256(uint160(operator)));
-        return
-            _operatorResponses[requestIndex].contains(operatorAddressAsBytes32);
+        return _operatorResponses[requestIndex].contains(operatorAddressAsBytes32);
     }
 
     /// @inheritdoc IReexecutionEndpoint
@@ -426,10 +369,7 @@ contract ReexecutionEndpoint is
     ) external view returns (RequestStatus status, bytes32 finalizedResponse) {
         require(requestIndex < _requests.length, InvalidRequestIndex());
         ReexecutionRequest memory request = _requests[requestIndex];
-        (status, finalizedResponse) = _getFinalizedResponse(
-            request,
-            requestIndex
-        );
+        (status, finalizedResponse) = _getFinalizedResponse(request, requestIndex);
     }
 
     /// @inheritdoc IReexecutionEndpoint
@@ -444,10 +384,7 @@ contract ReexecutionEndpoint is
         uint256 reservationID,
         uint32 blockNumber
     ) external view returns (uint256 count) {
-        return
-            _cumulativeReservationRequests[reservationID].upperLookup(
-                blockNumber
-            );
+        return _cumulativeReservationRequests[reservationID].upperLookup(blockNumber);
     }
 
     /// @inheritdoc IReexecutionEndpoint
@@ -457,11 +394,9 @@ contract ReexecutionEndpoint is
         uint32 currentBlock = uint32(block.number);
         uint32 windowStartBlock = currentBlock - uint32(responseWindowBlocks);
 
-        uint256 requestsAtWindowStart = _cumulativeReservationRequests[
-            reservationID
-        ].upperLookup(windowStartBlock);
-        uint256 currentRequests = _cumulativeReservationRequests[reservationID]
-            .latest();
+        uint256 requestsAtWindowStart =
+            _cumulativeReservationRequests[reservationID].upperLookup(windowStartBlock);
+        uint256 currentRequests = _cumulativeReservationRequests[reservationID].latest();
 
         return currentRequests - requestsAtWindowStart;
     }

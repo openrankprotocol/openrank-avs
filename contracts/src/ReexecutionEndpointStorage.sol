@@ -33,16 +33,15 @@ abstract contract ReexecutionEndpointStorage is IReexecutionEndpoint {
     // Requests
     ReexecutionRequest[] internal _requests;
     // Mapping from requestIndex => operator address (as bytes32) => response data
-    mapping(uint256 requestIndex => EnumerableMap.Bytes32ToBytes32Map)
-        internal _operatorResponses;
+    mapping(uint256 requestIndex => EnumerableMap.Bytes32ToBytes32Map) internal _operatorResponses;
 
     // requestIndex => bytes32 response => stake weight
-    mapping(uint256 requestIndex => mapping(bytes32 response => uint256 stakeWeight))
-        internal _responseStakeWeights;
+    mapping(uint256 requestIndex => mapping(bytes32 response => uint256 stakeWeight)) internal
+        _responseStakeWeights;
 
     // Mapping from reservationID => request history using DefaultZeroHistory
-    mapping(uint256 reservationID => Snapshots.DefaultZeroHistory)
-        internal _cumulativeReservationRequests;
+    mapping(uint256 reservationID => Snapshots.DefaultZeroHistory) internal
+        _cumulativeReservationRequests;
 
     constructor(
         IReservationRegistry _reservationRegistry,
