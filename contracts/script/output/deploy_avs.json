@@ -1,0 +1,18 @@
+{
+  "apkRegistry": "0x4E084ed141560CF1e4f859a62E9a7D8b655E7d4b",
+  "avsPauserReg": "0xb157997aB855C2a65f84e24d91DbBE607fF5D990",
+  "avsProxyAdmin": "0x961B7fa1A9B308F22bd4778430ba828F00f3d265",
+  "certificateVerifier": "0x5537678f2Fb6ee04bFc0ED10B005DA6cB2199c6a",
+  "deploymentBlock": 1,
+  "indexRegistry": "0xC8778dBf0E0adEbcF032d575f828875D7eD04709",
+  "object": "deployment",
+  "operatorStateRetriever": "0x32Dc730B5e7141014D00a8d2Ae70f73E1040D1DB",
+  "reexecutionSlasher": "0xd6C21CE57Eeb512ce3348C27fcfa04233582a7Ee",
+  "serviceManager": "0xB2dE1ec69a5d976af6a032D75e48F7224B067934",
+  "slashingRegistryCoordinator": "0x23CfBA854962dD1AB0a2a3Fe0632FDa698e74832",
+  "socketRegistry": "0x0d20218A9921D03C08D4a30D37B68d8C71A3b6DB",
+  "stakeRegistry": "0x37A2bE17456530Ec92480f05fE711Ed74D5Fd277",
+  "strategies": [
+    "0xe1BB51B6c15dc6bE82c45F6d7490570F449e9EBd"
+  ]
+}
