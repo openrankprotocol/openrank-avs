@@ -2,6 +2,7 @@
 pragma solidity ^0.8.27;
 
 import {console} from "forge-std/Script.sol";
+import "forge-std/StdJson.sol";
 
 import {ProxyAdmin} from "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 import {TransparentUpgradeableProxy} from "@openzeppelin/contracts/proxy/transparent/TransparentUpgradeableProxy.sol";
@@ -18,7 +19,6 @@ import {IRewardsCoordinator} from "eigenlayer-contracts/src/contracts/interfaces
 import {PauserRegistry} from "eigenlayer-contracts/src/contracts/permissions/PauserRegistry.sol";
 import {EmptyContract} from "eigenlayer-contracts/src/test/mocks/EmptyContract.sol";
 
-// import {OpenRankManager} from "../../src/OpenRankManager.sol";
 import {IPauserRegistry} from "eigenlayer-contracts/src/contracts/interfaces/IPauserRegistry.sol";
 import {BLSApkRegistry} from "eigenlayer-middleware/src/BLSApkRegistry.sol";
 import {IndexRegistry} from "eigenlayer-middleware/src/IndexRegistry.sol";
@@ -37,9 +37,8 @@ import {IServiceManager} from "eigenlayer-middleware/src/interfaces/IServiceMana
 import {ISlashingRegistryCoordinator, ISlashingRegistryCoordinatorTypes} from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
 import {IStakeRegistry, IStakeRegistryTypes} from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
 
-import {DeployTestUtils} from "./DeployTestUtils.sol";
-import "forge-std/StdJson.sol";
-import {OpenRankManager} from "../../src/OpenRankManager.sol";
+import {DeployTestUtils} from "rxp/script/common/DeployTestUtils.sol";
+import {OpenRankManager} from "../src/OpenRankManager.sol";
 
 abstract contract DeployAVS is DeployTestUtils {
     // Core contracts

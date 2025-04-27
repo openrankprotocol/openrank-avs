@@ -3,17 +3,15 @@ pragma solidity ^0.8.27;
 
 import "forge-std/StdJson.sol";
 import {console} from "forge-std/console.sol";
-
 import {IStrategy} from "eigenlayer-contracts/src/contracts/interfaces/IStrategy.sol";
 
-import {IERC20, IReexecutionEndpoint} from "../../src/rxp/interfaces/IReexecutionEndpoint.sol";
-import {IReservationRegistry} from "../../src/rxp/interfaces/IReservationRegistry.sol";
+import {IERC20, IReexecutionEndpoint} from "rxp/src/interfaces/core/IReexecutionEndpoint.sol";
+import {IReservationRegistry} from "rxp/src/interfaces/core/IReservationRegistry.sol";
 
 import {BLSApkRegistry, DeployAVS, EmptyContract, IAVSDirectory, IAVSRegistrar, IAllocationManager, IDelegationManager, IIndexRegistry, IPermissionController, IRewardsCoordinator, ISlashingRegistryCoordinatorTypes, ISocketRegistry, IStakeRegistry, IStakeRegistryTypes, ITransparentUpgradeableProxy, IndexRegistry, OperatorStateRetriever, PauserRegistry, ProxyAdmin, ServiceManagerBase, SlashingRegistryCoordinator, SocketRegistry, StakeRegistry, TransparentUpgradeableProxy} from "./DeployAVS.sol";
 
-import {CertificateVerifier} from "../../src/rxp/CertificateVerifier.sol";
-import {ReexecutionSlasher} from "../../src/rxp/ReexecutionSlasher.sol";
-import {DeployTestUtils} from "./DeployTestUtils.sol";
+import {CertificateVerifier} from "rxp/src/avs/CertificateVerifier.sol";
+import {ReexecutionSlasher} from "rxp/src/avs/ReexecutionSlasher.sol";
 
 abstract contract DeployAVSBase is DeployAVS {
     IReservationRegistry public reservationRegistry;
@@ -40,8 +38,8 @@ abstract contract DeployAVSBase is DeployAVS {
     IStrategy[] avsStrategies;
 
     function run(bool broadcast) public virtual {
-        eigenlayerConfigPath = "contracts/script/output/deploy_eigenlayer_core.json";
-        rxConfigPath = "contracts/script/output/deploy_rxp_contracts.json";
+        eigenlayerConfigPath = "script/local/output/deploy_eigenlayer_core_output.json";
+        rxConfigPath = "script/local/output/deploy_rxp_contracts_output.json";
 
         // parse eigenlayer contracts
         parseConfig(eigenlayerConfigPath);
@@ -224,7 +222,7 @@ abstract contract DeployAVSBase is DeployAVS {
 
     function parseRxConfig() public virtual {
         string
-            memory inputConfigPath = "contracts/script/output/deploy_rxp_contracts.json";
+            memory inputConfigPath = "script/local/output/deploy_rxp_contracts_output.json";
         string memory inputConfig = vm.readFile(inputConfigPath);
 
         reservationRegistry = IReservationRegistry(
@@ -303,10 +301,10 @@ abstract contract DeployAVSBase is DeployAVS {
         );
         string memory finalJson = vm.serializeString(output, "object", output);
 
-        string memory outputDir = "contracts/script/output";
+        string memory outputDir = "script/local/output";
         string memory outputPath = string.concat(
             outputDir,
-            "/deploy_avs.json"
+            "/deploy_avs_output.json"
         );
         vm.createDir(outputDir, true);
         vm.writeJson(finalJson, outputPath);

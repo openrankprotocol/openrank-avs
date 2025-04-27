@@ -1,12 +1,6 @@
 [submodule "datasets"]
 	path = datasets
 	url = https://github.com/openrankprotocol/datasets
-[submodule "contracts/lib/eigenda"]
-	path = contracts/lib/eigenda
-	url = https://github.com/Layr-Labs/eigenda
-[submodule "contracts/lib/eigenlayer-middleware"]
-	path = contracts/lib/eigenlayer-middleware
-	url = https://github.com/Layr-Labs/eigenlayer-middleware
 [submodule "contracts/lib/rxp"]
 	path = contracts/lib/rxp
 	url = https://github.com/Layr-Labs/rxp

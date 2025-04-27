@@ -10,13 +10,14 @@ via-ir = true
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
 remappings = [
-    "eigenda/=contracts/lib/eigenda",
-    "@eigenlayer/=contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts/src/",
-    "@eigenlayer-scripts/=contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts/script/",
-    "@eigenlayer-middleware/=contracts/lib/eigenlayer-middleware/",
-    "@openzeppelin/=contracts/lib/eigenlayer-middleware/lib/openzeppelin-contracts/",
-    "@openzeppelin-upgrades/=contracts/lib/eigenlayer-middleware/lib/openzeppelin-contracts-upgradeable/",
-    "forge-std/=contracts/lib/eigenlayer-middleware/lib/forge-std/src/",
+    "@openzeppelin/=contracts/lib/rxp/contracts/lib/eigenda/contracts/lib/openzeppelin-contracts/",
+    "@openzeppelin-upgrades/=contracts/lib/rxp/contracts/lib/eigenda/contracts/lib/openzeppelin-contracts-upgradeable/",
+    "eigenda/=contracts/lib/rxp/contracts/lib/eigenda/",
+    "eigenlayer-middleware/=contracts/lib/rxp/contracts/lib/eigenda/contracts/lib/eigenlayer-middleware/",
+    "eigenlayer-contracts/=contracts/lib/rxp/contracts/lib/eigenda/contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts/",
+    "teal-contracts/=contracts/lib/rxp/contracts/lib/teal/example/contracts/",
+    "forge-std/=contracts/lib/rxp/contracts/lib/forge-std/src/",
+    "ds-test/=contracts/lib/rxp/contracts/lib/forge-std/lib/ds-test/src/",
 ]
 
 [fmt]

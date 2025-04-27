@@ -1,19 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {IAllocationManager} from
-    "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import {IPermissionController} from
-    "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
+import { IAllocationManager } from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
+import { IPermissionController } from "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
 import {
     IAVSDirectory,
     IRewardsCoordinator,
     IServiceManager,
     ServiceManagerBase
 } from "eigenlayer-middleware/src/ServiceManagerBase.sol";
-import {ISlashingRegistryCoordinator} from
-    "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
-import {IStakeRegistry} from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
+import { ISlashingRegistryCoordinator } from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
+import { IStakeRegistry } from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
 
 contract OpenRankManager is ServiceManagerBase {
     error ComputeRequestNotFound();
