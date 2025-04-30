@@ -1,18 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import { IAllocationManager } from "eigenlayer-contracts/src/contracts/interfaces/IAllocationManager.sol";
-import { IPermissionController } from "eigenlayer-contracts/src/contracts/interfaces/IPermissionController.sol";
-import {
-    IAVSDirectory,
-    IRewardsCoordinator,
-    IServiceManager,
-    ServiceManagerBase
-} from "eigenlayer-middleware/src/ServiceManagerBase.sol";
-import { ISlashingRegistryCoordinator } from "eigenlayer-middleware/src/interfaces/ISlashingRegistryCoordinator.sol";
-import { IStakeRegistry } from "eigenlayer-middleware/src/interfaces/IStakeRegistry.sol";
-
-contract OpenRankManager is ServiceManagerBase {
+contract OpenRankManager {
     error ComputeRequestNotFound();
     error ComputeResultAlreadySubmitted();
     error ComputeResultNotFound();
@@ -68,6 +57,8 @@ contract OpenRankManager is ServiceManagerBase {
     uint64 public CHALLENGE_WINDOW = 60 * 60; // 60 minutes
     uint64 public RXP_WINDOW = 60;
 
+    address owner;
+
     uint256 public idCounter;
 
     mapping(address => bool) allowlistedComputers;
@@ -93,32 +84,19 @@ contract OpenRankManager is ServiceManagerBase {
     event MetaChallengeEvent(uint256 indexed computeId, uint256 subJobId);
     event MetaJobFinalized(uint256 indexed computeId);
 
-    constructor(
-        IAVSDirectory __avsDirectory,
-        IRewardsCoordinator __rewardsCoordinator,
-        ISlashingRegistryCoordinator __slashingRegistryCoordinator,
-        IStakeRegistry __stakeRegistry,
-        IPermissionController __permissionController,
-        IAllocationManager __allocationManager
-    )
-        ServiceManagerBase(
-            __avsDirectory,
-            __rewardsCoordinator,
-            __slashingRegistryCoordinator,
-            __stakeRegistry,
-            __permissionController,
-            __allocationManager
-        )
-    {}
+    modifier onlyOwner() {
+        require(msg.sender == owner);
+        _;
+    }
 
-    function initialize(address initialOwner, address _rewardsInitiator) external initializer {
-        __ServiceManagerBase_init(initialOwner, _rewardsInitiator);
-
+    constructor() {
         idCounter = 1;
 
-        allowlistedComputers[initialOwner] = true;
-        allowlistedChallengers[initialOwner] = true;
-        allowlistedUsers[initialOwner] = true;
+        allowlistedComputers[msg.sender] = true;
+        allowlistedChallengers[msg.sender] = true;
+        allowlistedUsers[msg.sender] = true;
+
+        owner = msg.sender;
     }
 
     // ---------------------------------------------------------------
