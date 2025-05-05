@@ -10,6 +10,7 @@ edition.workspace = true
 [dependencies]
 openrank-common = { workspace = true }
 
+thiserror = { workspace = true }
 alloy = { workspace = true, features = ["signer-mnemonic", "provider-ws"] }
 alloy-rlp = { workspace = true }
 clap = { workspace = true, features = ["derive"] }

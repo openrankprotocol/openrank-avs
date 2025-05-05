@@ -1,7 +1,7 @@
-use crate::sol::OpenRankServiceManager::{
+use crate::error::Error as NodeError;
+use crate::sol::OpenRankManager::{
     ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
-    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized,
-    OpenRankServiceManagerInstance,
+    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized, OpenRankManagerInstance,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -10,12 +10,11 @@ use alloy::primitives::Uint;
 use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use aws_sdk_s3::Client;
-use aws_sdk_s3::Error as AwsError;
 use csv::StringRecord;
 use futures_util::StreamExt;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
-use openrank_common::runners::verification_runner::VerificationRunner;
+use openrank_common::runners::verification_runner::{self, VerificationRunner};
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use openrank_common::Domain;
 use serde::de::DeserializeOwned;
@@ -43,20 +42,26 @@ struct JobResult {
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
     meta_id: String,
-) -> Result<T, AwsError> {
+) -> Result<T, NodeError> {
     let res = client
         .get_object()
         .bucket(BUCKET_NAME)
         .key(format!("meta/{}", meta_id))
         .send()
-        .await?;
-    let res_bytes = res.body.collect().await.unwrap();
-    let meta: T = serde_json::from_slice(res_bytes.to_vec().as_slice()).unwrap();
+        .await
+        .map_err(|e| NodeError::AwsError(e.into()))?;
+    let res_bytes = res
+        .body
+        .collect()
+        .await
+        .map_err(NodeError::ByteStreamError)?;
+    let meta: T =
+        serde_json::from_slice(res_bytes.to_vec().as_slice()).map_err(NodeError::SerdeError)?;
     Ok(meta)
 }
 
 async fn handle_compute_result<PH: Provider>(
-    contract: &OpenRankServiceManagerInstance<(), PH>,
+    contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
     compute_res: ComputeResultEvent,
@@ -65,7 +70,7 @@ async fn handle_compute_result<PH: Provider>(
     challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
     finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
     challenge_window: u64,
-) {
+) -> Result<(), NodeError> {
     info!(
         "ComputeResultEvent: ComputeId({}), Commitment({:#}), ScoresId({:#})",
         compute_res.computeId, compute_res.commitment, compute_res.scores_id
@@ -78,17 +83,17 @@ async fn handle_compute_result<PH: Provider>(
     let block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Latest))
         .await
-        .unwrap()
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?
         .unwrap();
     let log_block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Number(
             log.block_number.unwrap(),
         )))
         .await
-        .unwrap()
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?
         .unwrap();
     if already_challenged || already_finalized {
-        return;
+        return Ok(());
     }
 
     let compute_req = compute_request_map.get(&compute_res.computeId).unwrap();
@@ -98,9 +103,12 @@ async fn handle_compute_result<PH: Provider>(
     let trust_id_str = hex::encode(compute_req.trust_id.as_slice());
     let seed_id_str = hex::encode(compute_req.seed_id.as_slice());
     let scores_id_str = hex::encode(compute_res.scores_id.as_slice());
-    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str)).unwrap();
-    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str)).unwrap();
-    let mut scores_file = File::create(&format!("./scores/{}", scores_id_str)).unwrap();
+    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+    let mut scores_file = File::create(&format!("./scores/{}", scores_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
 
     let mut trust_res = s3_client
         .get_object()
@@ -108,35 +116,44 @@ async fn handle_compute_result<PH: Provider>(
         .key(format!("trust/{}", trust_id_str))
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
     let mut seed_res = s3_client
         .get_object()
         .bucket(BUCKET_NAME)
         .key(format!("seed/{}", seed_id_str))
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
     let mut scores_res = s3_client
         .get_object()
         .bucket(BUCKET_NAME)
         .key(format!("scores/{}", scores_id_str))
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
 
     while let Some(bytes) = trust_res.body.next().await {
-        trust_file.write(&bytes.unwrap()).unwrap();
+        trust_file
+            .write(&bytes.unwrap())
+            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
     }
     while let Some(bytes) = seed_res.body.next().await {
-        seed_file.write(&bytes.unwrap()).unwrap();
+        seed_file
+            .write(&bytes.unwrap())
+            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
     }
     while let Some(bytes) = scores_res.body.next().await {
-        scores_file.write(&bytes.unwrap()).unwrap();
+        scores_file
+            .write(&bytes.unwrap())
+            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
     }
 
-    let trust_file = File::open(&format!("./trust/{}", trust_id_str)).unwrap();
-    let seed_file = File::open(&format!("./seed/{}", seed_id_str)).unwrap();
-    let scores_file = File::open(&format!("./scores/{}", scores_id_str)).unwrap();
+    let trust_file = File::open(&format!("./trust/{}", trust_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+    let seed_file = File::open(&format!("./seed/{}", seed_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+    let scores_file = File::open(&format!("./scores/{}", scores_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
 
     let mut trust_rdr = csv::Reader::from_reader(trust_file);
     let mut seed_rdr = csv::Reader::from_reader(seed_file);
@@ -144,24 +161,25 @@ async fn handle_compute_result<PH: Provider>(
 
     let mut trust_entries = Vec::new();
     for result in trust_rdr.records() {
-        let record: StringRecord = result.unwrap();
-        let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+        let record: StringRecord = result.map_err(NodeError::CsvError)?;
+        let (from, to, value): (String, String, f32) =
+            record.deserialize(None).map_err(NodeError::CsvError)?;
         let trust_entry = TrustEntry::new(from, to, value);
         trust_entries.push(trust_entry);
     }
 
     let mut seed_entries = Vec::new();
     for result in seed_rdr.records() {
-        let record: StringRecord = result.unwrap();
-        let (id, value): (String, f32) = record.deserialize(None).unwrap();
+        let record: StringRecord = result.map_err(NodeError::CsvError)?;
+        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
         let seed_entry = ScoreEntry::new(id, value);
         seed_entries.push(seed_entry);
     }
 
     let mut scores_entries = Vec::new();
     for result in scores_rdr.records() {
-        let record: StringRecord = result.unwrap();
-        let (id, value): (String, f32) = record.deserialize(None).unwrap();
+        let record: StringRecord = result.map_err(NodeError::CsvError)?;
+        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
         let score_entry = ScoreEntry::new(id, value);
         scores_entries.push(score_entry);
     }
@@ -171,10 +189,10 @@ async fn handle_compute_result<PH: Provider>(
     let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
     runner
         .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-        .unwrap();
+        .map_err(NodeError::VerificationRunnerError)?;
     runner
         .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-        .unwrap();
+        .map_err(NodeError::VerificationRunnerError)?;
     runner.update_commitment(
         Hash::from_bytes(compute_res.computeId.to_be_bytes()),
         Hash::from_slice(compute_res.commitment.as_slice()),
@@ -185,13 +203,13 @@ async fn handle_compute_result<PH: Provider>(
             Hash::from_bytes(compute_res.computeId.to_be_bytes()),
             scores_entries,
         )
-        .unwrap();
+        .map_err(NodeError::VerificationRunnerError)?;
     let result = runner
         .verify_job(
             mock_domain,
             Hash::from_bytes(compute_res.computeId.to_be_bytes()),
         )
-        .unwrap();
+        .map_err(NodeError::VerificationRunnerError)?;
     info!("Core Compute verification completed. Result({})", result);
 
     let challenge_window_open =
@@ -202,19 +220,19 @@ async fn handle_compute_result<PH: Provider>(
         info!("Submitting challenge. Calling 'submitChallenge'");
         let res = contract.submitChallenge(compute_res.computeId).send().await;
         if let Ok(res) = res {
-            info!(
-                "'submitChallenge' completed. Tx Hash({:#})",
-                res.watch().await.unwrap()
-            );
+            let tx_res = res.watch().await.unwrap();
+            info!("'submitChallenge' completed. Tx Hash({:#})", tx_res);
         } else {
             let err = res.unwrap_err();
             error!("'submitChallenge' failed. {}", err);
         }
     }
+
+    Ok(())
 }
 
 async fn handle_meta_compute_result<PH: Provider>(
-    contract: &OpenRankServiceManagerInstance<(), PH>,
+    contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
     meta_compute_res: MetaComputeResultEvent,
@@ -223,7 +241,7 @@ async fn handle_meta_compute_result<PH: Provider>(
     meta_challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
     meta_finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
     challenge_window: u64,
-) {
+) -> Result<(), NodeError> {
     let meta_result: Vec<JobResult> =
         download_meta(s3_client, meta_compute_res.resultsId.encode_hex())
             .await
@@ -241,17 +259,17 @@ async fn handle_meta_compute_result<PH: Provider>(
     let block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Latest))
         .await
-        .unwrap()
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?
         .unwrap();
     let log_block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Number(
             log.block_number.unwrap(),
         )))
         .await
-        .unwrap()
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?
         .unwrap();
     if already_challenged || already_finalized {
-        return;
+        return Ok(());
     }
 
     let compute_req = meta_compute_request_map
@@ -259,9 +277,7 @@ async fn handle_meta_compute_result<PH: Provider>(
         .unwrap();
 
     let job_description: Vec<JobDescription> =
-        download_meta(s3_client, compute_req.jobDescriptionId.encode_hex())
-            .await
-            .unwrap();
+        download_meta(s3_client, compute_req.jobDescriptionId.encode_hex()).await?;
 
     let mut global_result = true;
     let mut sub_job_failed = 0;
@@ -269,11 +285,12 @@ async fn handle_meta_compute_result<PH: Provider>(
     for (i, compute_res) in meta_result.iter().enumerate() {
         info!("Downloading data...");
 
-        let mut trust_file =
-            File::create(&format!("./trust/{}", job_description[i].trust_id)).unwrap();
-        let mut seed_file =
-            File::create(&format!("./seed/{}", job_description[i].seed_id)).unwrap();
-        let mut scores_file = File::create(&format!("./scores/{}", compute_res.scores_id)).unwrap();
+        let mut trust_file = File::create(&format!("./trust/{}", job_description[i].trust_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+        let mut seed_file = File::create(&format!("./seed/{}", job_description[i].seed_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+        let mut scores_file = File::create(&format!("./scores/{}", compute_res.scores_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
 
         let mut trust_res = s3_client
             .get_object()
@@ -281,37 +298,46 @@ async fn handle_meta_compute_result<PH: Provider>(
             .key(format!("trust/{}", job_description[i].trust_id))
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut seed_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
             .key(format!("seed/{}", job_description[i].seed_id))
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut scores_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
             .key(format!("scores/{}", compute_res.scores_id))
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
 
         while let Some(bytes) = trust_res.body.next().await {
-            trust_file.write(&bytes.unwrap()).unwrap();
+            trust_file
+                .write(&bytes.unwrap())
+                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
         }
         while let Some(bytes) = seed_res.body.next().await {
-            seed_file.write(&bytes.unwrap()).unwrap();
+            seed_file
+                .write(&bytes.unwrap())
+                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
         }
         while let Some(bytes) = scores_res.body.next().await {
-            scores_file.write(&bytes.unwrap()).unwrap();
+            scores_file
+                .write(&bytes.unwrap())
+                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
         }
     }
 
     for (i, compute_res) in meta_result.iter().enumerate() {
-        let trust_file = File::open(&format!("./trust/{}", job_description[i].trust_id)).unwrap();
-        let seed_file = File::open(&format!("./seed/{}", job_description[i].seed_id)).unwrap();
-        let scores_file = File::open(&format!("./scores/{}", compute_res.scores_id)).unwrap();
+        let trust_file = File::open(&format!("./trust/{}", job_description[i].trust_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+        let seed_file = File::open(&format!("./seed/{}", job_description[i].seed_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+        let scores_file = File::open(&format!("./scores/{}", compute_res.scores_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
 
         let mut trust_rdr = csv::Reader::from_reader(trust_file);
         let mut seed_rdr = csv::Reader::from_reader(seed_file);
@@ -319,24 +345,27 @@ async fn handle_meta_compute_result<PH: Provider>(
 
         let mut trust_entries = Vec::new();
         for result in trust_rdr.records() {
-            let record: StringRecord = result.unwrap();
-            let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+            let record: StringRecord = result.map_err(NodeError::CsvError)?;
+            let (from, to, value): (String, String, f32) =
+                record.deserialize(None).map_err(NodeError::CsvError)?;
             let trust_entry = TrustEntry::new(from, to, value);
             trust_entries.push(trust_entry);
         }
 
         let mut seed_entries = Vec::new();
         for result in seed_rdr.records() {
-            let record: StringRecord = result.unwrap();
-            let (id, value): (String, f32) = record.deserialize(None).unwrap();
+            let record: StringRecord = result.map_err(NodeError::CsvError)?;
+            let (id, value): (String, f32) =
+                record.deserialize(None).map_err(NodeError::CsvError)?;
             let seed_entry = ScoreEntry::new(id, value);
             seed_entries.push(seed_entry);
         }
 
         let mut scores_entries = Vec::new();
         for result in scores_rdr.records() {
-            let record: StringRecord = result.unwrap();
-            let (id, value): (String, f32) = record.deserialize(None).unwrap();
+            let record: StringRecord = result.map_err(NodeError::CsvError)?;
+            let (id, value): (String, f32) =
+                record.deserialize(None).map_err(NodeError::CsvError)?;
             let score_entry = ScoreEntry::new(id, value);
             scores_entries.push(score_entry);
         }
@@ -346,10 +375,10 @@ async fn handle_meta_compute_result<PH: Provider>(
         let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
         runner
             .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-            .unwrap();
+            .map_err(NodeError::VerificationRunnerError)?;
         runner
             .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-            .unwrap();
+            .map_err(NodeError::VerificationRunnerError)?;
         runner.update_commitment(
             Hash::from_slice(i.to_be_bytes().as_slice()),
             Hash::from_slice(
@@ -364,10 +393,10 @@ async fn handle_meta_compute_result<PH: Provider>(
                 Hash::from_slice(i.to_be_bytes().as_slice()),
                 scores_entries,
             )
-            .unwrap();
+            .map_err(NodeError::VerificationRunnerError)?;
         let result = runner
             .verify_job(mock_domain, Hash::from_slice(i.to_be_bytes().as_slice()))
-            .unwrap();
+            .map_err(NodeError::VerificationRunnerError)?;
         info!("Core Compute verification completed. Result({})", result);
 
         if !result {
@@ -382,8 +411,11 @@ async fn handle_meta_compute_result<PH: Provider>(
         ));
     }
 
-    let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments).unwrap();
-    let meta_commitment = commitment_tree.root().unwrap();
+    let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments)
+        .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
+    let meta_commitment = commitment_tree
+        .root()
+        .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
     let commitment_result = meta_commitment.to_hex() == meta_compute_res.commitment.encode_hex();
     if !commitment_result {
         global_result = false;
@@ -401,19 +433,19 @@ async fn handle_meta_compute_result<PH: Provider>(
             .send()
             .await;
         if let Ok(res) = res {
-            info!(
-                "'metaSubmitChallenge' completed. Tx Hash({:#})",
-                res.watch().await.unwrap()
-            );
+            let tx_res = res.watch().await.unwrap();
+            info!("'metaSubmitChallenge' completed. Tx Hash({:#})", tx_res);
         } else {
             let err = res.unwrap_err();
             error!("'metaSubmitChallenge' failed. {}", err);
         }
     }
+
+    Ok(())
 }
 
 pub async fn run<P: Provider>(
-    contract: OpenRankServiceManagerInstance<(), P>,
+    contract: OpenRankManagerInstance<(), P>,
     provider: P,
     s3_client: Client,
 ) {
@@ -518,7 +550,7 @@ pub async fn run<P: Provider>(
                         &challanged_jobs_map,
                         &finalized_jobs_map,
                         challenge_window._0
-                    ).await;
+                    ).await.unwrap();
                 }
             }
             challenge_event = challenge_stream.next() => {
@@ -564,7 +596,7 @@ pub async fn run<P: Provider>(
                         &meta_challanged_jobs_map,
                         &meta_finalized_jobs_map,
                         challenge_window._0,
-                    ).await
+                    ).await.unwrap();
                 }
             }
             meta_challenge_event = meta_challenge_stream.next() => {

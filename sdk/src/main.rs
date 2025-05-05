@@ -17,7 +17,7 @@ use aws_sdk_s3::{Client, Error as AwsError};
 use clap::{Parser, Subcommand};
 use dotenv::dotenv;
 use serde::{Deserialize, Serialize};
-use sol::OpenRankServiceManager;
+use sol::OpenRankManager;
 use std::collections::HashMap;
 use std::fs::read_dir;
 
@@ -128,7 +128,7 @@ async fn main() -> Result<(), AwsError> {
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
 
             let contract =
-                OpenRankServiceManager::new(Address::from_hex(manager_address).unwrap(), provider);
+                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
 
             let trust_id_bytes = FixedBytes::from_hex(trust_id).unwrap();
             let seed_id_bytes = FixedBytes::from_hex(seed_id).unwrap();
@@ -190,7 +190,7 @@ async fn main() -> Result<(), AwsError> {
                 .wallet(wallet)
                 .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
             let contract =
-                OpenRankServiceManager::new(Address::from_hex(manager_address).unwrap(), provider);
+                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
 
             let meta_id_bytes = FixedBytes::from_hex(meta_id.clone()).unwrap();
 

@@ -1,7 +1,7 @@
-use crate::sol::OpenRankServiceManager::{
+use crate::error::Error as NodeError;
+use crate::sol::OpenRankManager::{
     ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
-    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized,
-    OpenRankServiceManagerInstance,
+    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized, OpenRankManagerInstance,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -11,12 +11,11 @@ use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use aws_sdk_s3::primitives::ByteStream;
 use aws_sdk_s3::Client;
-use aws_sdk_s3::Error as AwsError;
 use csv::StringRecord;
 use futures_util::StreamExt;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
-use openrank_common::runners::compute_runner::ComputeRunner;
+use openrank_common::runners::compute_runner::{self, ComputeRunner};
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use openrank_common::Domain;
 use serde::de::DeserializeOwned;
@@ -53,8 +52,8 @@ impl JobResult {
     }
 }
 
-pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<String, AwsError> {
-    let mut bytes = serde_json::to_vec(&meta).unwrap();
+pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<String, NodeError> {
+    let mut bytes = serde_json::to_vec(&meta).map_err(NodeError::SerdeError)?;
     let body = ByteStream::from(bytes.clone());
 
     let mut hasher = Keccak256::new();
@@ -66,31 +65,38 @@ pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<Strin
         .key(format!("meta/{}", hex::encode(hash.clone())))
         .body(body)
         .send()
-        .await?;
+        .await
+        .map_err(|e| NodeError::AwsError(e.into()))?;
     Ok(hex::encode(hash))
 }
 
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
     meta_id: String,
-) -> Result<T, AwsError> {
+) -> Result<T, NodeError> {
     let res = client
         .get_object()
         .bucket(BUCKET_NAME)
         .key(format!("meta/{}", meta_id))
         .send()
-        .await?;
-    let res_bytes = res.body.collect().await.unwrap();
-    let meta: T = serde_json::from_slice(res_bytes.to_vec().as_slice()).unwrap();
+        .await
+        .map_err(|e| NodeError::AwsError(e.into()))?;
+    let res_bytes = res
+        .body
+        .collect()
+        .await
+        .map_err(NodeError::ByteStreamError)?;
+    let meta: T =
+        serde_json::from_slice(res_bytes.to_vec().as_slice()).map_err(NodeError::SerdeError)?;
     Ok(meta)
 }
 
 async fn handle_compute_request<PH: Provider>(
-    contract: &OpenRankServiceManagerInstance<(), PH>,
+    contract: &OpenRankManagerInstance<(), PH>,
     s3_client: &Client,
     compute_req: ComputeRequestEvent,
     log: Log,
-) {
+) -> Result<(), NodeError> {
     let start = Instant::now();
     info!(
         "ComputeRequestEvent: ComputeId({}), TrustId({:#}), SeedId({:#})",
@@ -100,8 +106,10 @@ async fn handle_compute_request<PH: Provider>(
 
     let trust_id_str = hex::encode(compute_req.trust_id.as_slice());
     let seed_id_str = hex::encode(compute_req.seed_id.as_slice());
-    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str)).unwrap();
-    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str)).unwrap();
+    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
 
     info!("Downloading data...");
     let mut trust_res = s3_client
@@ -110,41 +118,48 @@ async fn handle_compute_request<PH: Provider>(
         .key(format!("trust/{}", trust_id_str))
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
     let mut seed_res = s3_client
         .get_object()
         .bucket(BUCKET_NAME)
         .key(format!("seed/{}", seed_id_str))
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
 
     while let Some(bytes) = trust_res.body.next().await {
-        trust_file.write(&bytes.unwrap()).unwrap();
+        trust_file
+            .write(&bytes.unwrap())
+            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
     }
 
     while let Some(bytes) = seed_res.body.next().await {
-        seed_file.write(&bytes.unwrap()).unwrap();
+        seed_file
+            .write(&bytes.unwrap())
+            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
     }
 
-    let trust_file = File::open(&format!("./trust/{}", trust_id_str)).unwrap();
-    let seed_file = File::open(&format!("./seed/{}", seed_id_str)).unwrap();
+    let trust_file = File::open(&format!("./trust/{}", trust_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+    let seed_file = File::open(&format!("./seed/{}", seed_id_str))
+        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
 
     let mut trust_rdr = csv::Reader::from_reader(trust_file);
     let mut seed_rdr = csv::Reader::from_reader(seed_file);
 
     let mut trust_entries = Vec::new();
     for result in trust_rdr.records() {
-        let record: StringRecord = result.unwrap();
-        let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+        let record: StringRecord = result.map_err(NodeError::CsvError)?;
+        let (from, to, value): (String, String, f32) =
+            record.deserialize(None).map_err(NodeError::CsvError)?;
         let trust_entry = TrustEntry::new(from, to, value);
         trust_entries.push(trust_entry);
     }
 
     let mut seed_entries = Vec::new();
     for result in seed_rdr.records() {
-        let record: StringRecord = result.unwrap();
-        let (id, value): (String, f32) = record.deserialize(None).unwrap();
+        let record: StringRecord = result.map_err(NodeError::CsvError)?;
+        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
         let trust_entry = ScoreEntry::new(id, value);
         seed_entries.push(trust_entry);
     }
@@ -154,22 +169,30 @@ async fn handle_compute_request<PH: Provider>(
     let mut runner = ComputeRunner::new(&[mock_domain.clone()]);
     runner
         .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-        .unwrap();
+        .map_err(NodeError::ComputeRunnerError)?;
     runner
         .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-        .unwrap();
-    runner.compute(mock_domain.clone()).unwrap();
-    let scores = runner.get_compute_scores(mock_domain.clone()).unwrap();
-    runner.create_compute_tree(mock_domain.clone()).unwrap();
-    let (_, compute_root) = runner.get_root_hashes(mock_domain.clone()).unwrap();
+        .map_err(NodeError::ComputeRunnerError)?;
+    runner
+        .compute(mock_domain.clone())
+        .map_err(NodeError::ComputeRunnerError)?;
+    let scores = runner
+        .get_compute_scores(mock_domain.clone())
+        .map_err(NodeError::ComputeRunnerError)?;
+    runner
+        .create_compute_tree(mock_domain.clone())
+        .map_err(NodeError::ComputeRunnerError)?;
+    let (_, compute_root) = runner
+        .get_root_hashes(mock_domain.clone())
+        .map_err(NodeError::ComputeRunnerError)?;
 
     let scores_vec = Vec::new();
     let mut wtr = csv::Writer::from_writer(scores_vec);
-    wtr.write_record(&["i", "v"]).unwrap();
-    scores.iter().for_each(|x| {
+    wtr.write_record(&["i", "v"]).map_err(NodeError::CsvError)?;
+    for x in scores {
         wtr.write_record(&[x.id(), x.value().to_string().as_str()])
-            .unwrap();
-    });
+            .map_err(NodeError::CsvError)?;
+    }
     let mut file_bytes = wtr.into_inner().unwrap();
     let mut hasher = Keccak256::new();
     hasher.write_all(&mut file_bytes).unwrap();
@@ -192,7 +215,7 @@ async fn handle_compute_request<PH: Provider>(
         .body(body)
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::AwsError(e.into()))?;
 
     info!("Upload scores complete...");
 
@@ -204,24 +227,24 @@ async fn handle_compute_request<PH: Provider>(
         .submitComputeResult(compute_req.computeId, commitment_bytes, scores_id_bytes)
         .send()
         .await
-        .unwrap();
-    info!(
-        "'submitComputeResult' completed: Tx Hash({:#})",
-        res.watch().await.unwrap()
-    );
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
+    let tx_hash = res
+        .watch()
+        .await
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
+    info!("'submitComputeResult' completed: Tx Hash({:#})", tx_hash);
+    Ok(())
 }
 
 async fn handle_meta_compute_request<PH: Provider>(
-    contract: &OpenRankServiceManagerInstance<(), PH>,
+    contract: &OpenRankManagerInstance<(), PH>,
     s3_client: &Client,
     meta_compute_req: MetaComputeRequestEvent,
     log: Log,
-) {
+) -> Result<(), NodeError> {
     let start = Instant::now();
     let meta_job: Vec<JobDescription> =
-        download_meta(s3_client, meta_compute_req.jobDescriptionId.encode_hex())
-            .await
-            .unwrap();
+        download_meta(s3_client, meta_compute_req.jobDescriptionId.encode_hex()).await?;
     info!(
         "MetaComputeRequestEvent: JobDescriptionId({})",
         meta_compute_req.jobDescriptionId
@@ -236,8 +259,10 @@ async fn handle_meta_compute_request<PH: Provider>(
             compute_req.trust_id, compute_req.seed_id
         );
 
-        let mut trust_file = File::create(&format!("./trust/{}", compute_req.trust_id)).unwrap();
-        let mut seed_file = File::create(&format!("./seed/{}", compute_req.seed_id)).unwrap();
+        let mut trust_file = File::create(&format!("./trust/{}", compute_req.trust_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
+        let mut seed_file = File::create(&format!("./seed/{}", compute_req.seed_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
 
         info!("Downloading data...");
         let mut trust_res = s3_client
@@ -246,43 +271,51 @@ async fn handle_meta_compute_request<PH: Provider>(
             .key(format!("trust/{}", compute_req.trust_id))
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut seed_res = s3_client
             .get_object()
             .bucket(BUCKET_NAME)
             .key(format!("seed/{}", compute_req.seed_id))
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
 
         while let Some(bytes) = trust_res.body.next().await {
-            trust_file.write(&bytes.unwrap()).unwrap();
+            trust_file
+                .write(&bytes.unwrap())
+                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
         }
 
         while let Some(bytes) = seed_res.body.next().await {
-            seed_file.write(&bytes.unwrap()).unwrap();
+            seed_file
+                .write(&bytes.unwrap())
+                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
         }
     }
 
     for compute_req in meta_job {
-        let trust_file = File::open(&format!("./trust/{}", compute_req.trust_id)).unwrap();
-        let seed_file = File::open(&format!("./seed/{}", compute_req.seed_id)).unwrap();
+        let trust_file = File::open(&format!("./trust/{}", compute_req.trust_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
+        let seed_file = File::open(&format!("./seed/{}", compute_req.seed_id))
+            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
 
         let mut trust_rdr = csv::Reader::from_reader(trust_file);
         let mut seed_rdr = csv::Reader::from_reader(seed_file);
 
         let mut trust_entries = Vec::new();
         for result in trust_rdr.records() {
-            let record: StringRecord = result.unwrap();
-            let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+            let record: StringRecord = result.map_err(NodeError::CsvError)?;
+            let (from, to, value): (String, String, f32) =
+                record.deserialize(None).map_err(NodeError::CsvError)?;
             let trust_entry = TrustEntry::new(from, to, value);
             trust_entries.push(trust_entry);
         }
 
         let mut seed_entries = Vec::new();
         for result in seed_rdr.records() {
-            let record: StringRecord = result.unwrap();
-            let (id, value): (String, f32) = record.deserialize(None).unwrap();
+            let record: StringRecord = result.map_err(NodeError::CsvError)?;
+            let (id, value): (String, f32) =
+                record.deserialize(None).map_err(NodeError::CsvError)?;
             let trust_entry = ScoreEntry::new(id, value);
             seed_entries.push(trust_entry);
         }
@@ -292,22 +325,30 @@ async fn handle_meta_compute_request<PH: Provider>(
         let mut runner = ComputeRunner::new(&[mock_domain.clone()]);
         runner
             .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-            .unwrap();
+            .map_err(NodeError::ComputeRunnerError)?;
         runner
             .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-            .unwrap();
-        runner.compute(mock_domain.clone()).unwrap();
-        let scores = runner.get_compute_scores(mock_domain.clone()).unwrap();
-        runner.create_compute_tree(mock_domain.clone()).unwrap();
-        let (_, compute_root) = runner.get_root_hashes(mock_domain.clone()).unwrap();
+            .map_err(NodeError::ComputeRunnerError)?;
+        runner
+            .compute(mock_domain.clone())
+            .map_err(NodeError::ComputeRunnerError)?;
+        let scores = runner
+            .get_compute_scores(mock_domain.clone())
+            .map_err(NodeError::ComputeRunnerError)?;
+        runner
+            .create_compute_tree(mock_domain.clone())
+            .map_err(NodeError::ComputeRunnerError)?;
+        let (_, compute_root) = runner
+            .get_root_hashes(mock_domain.clone())
+            .map_err(NodeError::ComputeRunnerError)?;
 
         let scores_vec = Vec::new();
         let mut wtr = csv::Writer::from_writer(scores_vec);
-        wtr.write_record(&["i", "v"]).unwrap();
-        scores.iter().for_each(|x| {
+        wtr.write_record(&["i", "v"]).map_err(NodeError::CsvError)?;
+        for x in scores {
             wtr.write_record(&[x.id(), x.value().to_string().as_str()])
-                .unwrap();
-        });
+                .map_err(NodeError::CsvError)?;
+        }
         let mut file_bytes = wtr.into_inner().unwrap();
         let mut hasher = Keccak256::new();
         hasher.write_all(&mut file_bytes).unwrap();
@@ -333,7 +374,7 @@ async fn handle_meta_compute_request<PH: Provider>(
             .body(body)
             .send()
             .await
-            .unwrap();
+            .map_err(|e| NodeError::AwsError(e.into()))?;
 
         info!("Upload scores complete...");
 
@@ -341,10 +382,13 @@ async fn handle_meta_compute_request<PH: Provider>(
         commitments.push(Hash::from_slice(commitment_bytes.as_slice()));
     }
 
-    let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments).unwrap();
-    let meta_commitment = commitment_tree.root().unwrap();
+    let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments)
+        .map_err(|e| NodeError::ComputeRunnerError(compute_runner::Error::Merkle(e)))?;
+    let meta_commitment = commitment_tree
+        .root()
+        .map_err(|e| NodeError::ComputeRunnerError(compute_runner::Error::Merkle(e)))?;
 
-    let meta_id = upload_meta(&s3_client, job_results).await.unwrap();
+    let meta_id = upload_meta(&s3_client, job_results).await?;
 
     let meta_commitment_bytes = FixedBytes::from_slice(meta_commitment.inner());
     let meta_id_bytes = FixedBytes::from_slice(hex::decode(meta_id).unwrap().as_slice());
@@ -358,18 +402,24 @@ async fn handle_meta_compute_request<PH: Provider>(
         )
         .send()
         .await
-        .unwrap();
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
+    let tx_hash = res
+        .watch()
+        .await
+        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
     info!(
         "'submitMetaComputeResult' completed: Tx Hash({:#})",
-        res.watch().await.unwrap()
+        tx_hash
     );
 
     let elapsed = start.elapsed();
     info!("Total compute time: {:?}", elapsed);
+
+    Ok(())
 }
 
 async fn finalize_job<PH: Provider>(
-    contract: &OpenRankServiceManagerInstance<(), PH>,
+    contract: &OpenRankManagerInstance<(), PH>,
     provider_http: &PH,
     challenge_window: u64,
     compute_result_map: &HashMap<Uint<256, 4>, Log>,
@@ -440,8 +490,8 @@ async fn finalize_job<PH: Provider>(
 }
 
 pub async fn run<PH: Provider, PW: Provider>(
-    contract: OpenRankServiceManagerInstance<(), PH>,
-    contract_ws: OpenRankServiceManagerInstance<(), PW>,
+    contract: OpenRankManagerInstance<(), PH>,
+    contract_ws: OpenRankManagerInstance<(), PW>,
     provider_http: PH,
     s3_client: Client,
 ) {
@@ -527,7 +577,7 @@ pub async fn run<PH: Provider, PW: Provider>(
                         &s3_client,
                         compute_req,
                         log
-                    ).await;
+                    ).await.unwrap();
                 }
             }
             compute_result_event = compute_result_stream.next() => {
@@ -566,7 +616,7 @@ pub async fn run<PH: Provider, PW: Provider>(
                         &s3_client,
                         compute_req,
                         log
-                    ).await;
+                    ).await.unwrap();
                 }
             }
             meta_compute_result_event = meta_compute_result_stream.next() => {

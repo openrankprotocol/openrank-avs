@@ -1,6 +1,5 @@
 use crate::format_hex;
 use alloy::hex;
-use alloy_rlp::Encodable;
 use alloy_rlp_derive::{RlpDecodable, RlpEncodable};
 use serde::{Deserialize, Serialize};
 use sha3::Digest;
