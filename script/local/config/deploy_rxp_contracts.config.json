@@ -5,7 +5,7 @@
     "ReexecutionEndpoint": {
         "responseFeePerOperator": 1,
         "reexecutionFeePerOperator": 1,
-        "responseWindowBlocks": 7200,
+        "responseWindowBlocks": 1,
         "maximumRequestsPerReservationPerResponseWindow": 1000000000000000000
     },
     "ReservationRegistry": {

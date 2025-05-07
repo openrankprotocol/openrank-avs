@@ -1,7 +1,6 @@
 use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
-    ChallengeEvent, ComputeRequestEvent, ComputeResultEvent, JobFinalized, MetaChallengeEvent,
-    MetaComputeRequestEvent, MetaComputeResultEvent, MetaJobFinalized, OpenRankManagerInstance,
+    MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
@@ -60,177 +59,6 @@ pub async fn download_meta<T: DeserializeOwned>(
     Ok(meta)
 }
 
-async fn handle_compute_result<PH: Provider>(
-    contract: &OpenRankManagerInstance<(), PH>,
-    provider: &PH,
-    s3_client: &Client,
-    compute_res: ComputeResultEvent,
-    log: Log,
-    compute_request_map: &HashMap<Uint<256, 4>, ComputeRequestEvent>,
-    challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
-    finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
-    challenge_window: u64,
-) -> Result<(), NodeError> {
-    info!(
-        "ComputeResultEvent: ComputeId({}), Commitment({:#}), ScoresId({:#})",
-        compute_res.computeId, compute_res.commitment, compute_res.scores_id
-    );
-    debug!("Log: {:?}", log);
-
-    let already_challenged = challanged_jobs_map.contains_key(&compute_res.computeId);
-    let already_finalized = finalized_jobs_map.contains_key(&compute_res.computeId);
-
-    let block = provider
-        .get_block(BlockId::Number(BlockNumberOrTag::Latest))
-        .await
-        .map_err(|e| NodeError::TxError(format!("{e:}")))?
-        .unwrap();
-    let log_block = provider
-        .get_block(BlockId::Number(BlockNumberOrTag::Number(
-            log.block_number.unwrap(),
-        )))
-        .await
-        .map_err(|e| NodeError::TxError(format!("{e:}")))?
-        .unwrap();
-    if already_challenged || already_finalized {
-        return Ok(());
-    }
-
-    let compute_req = compute_request_map.get(&compute_res.computeId).unwrap();
-
-    info!("Downloading data...");
-
-    let trust_id_str = hex::encode(compute_req.trust_id.as_slice());
-    let seed_id_str = hex::encode(compute_req.seed_id.as_slice());
-    let scores_id_str = hex::encode(compute_res.scores_id.as_slice());
-    let mut trust_file = File::create(&format!("./trust/{}", trust_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-    let mut seed_file = File::create(&format!("./seed/{}", seed_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-    let mut scores_file = File::create(&format!("./scores/{}", scores_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-
-    let mut trust_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("trust/{}", trust_id_str))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let mut seed_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("seed/{}", seed_id_str))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let mut scores_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("scores/{}", scores_id_str))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-
-    while let Some(bytes) = trust_res.body.next().await {
-        trust_file
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-    }
-    while let Some(bytes) = seed_res.body.next().await {
-        seed_file
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-    }
-    while let Some(bytes) = scores_res.body.next().await {
-        scores_file
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-    }
-
-    let trust_file = File::open(&format!("./trust/{}", trust_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-    let seed_file = File::open(&format!("./seed/{}", seed_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-    let scores_file = File::open(&format!("./scores/{}", scores_id_str))
-        .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-
-    let mut trust_rdr = csv::Reader::from_reader(trust_file);
-    let mut seed_rdr = csv::Reader::from_reader(seed_file);
-    let mut scores_rdr = csv::Reader::from_reader(scores_file);
-
-    let mut trust_entries = Vec::new();
-    for result in trust_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (from, to, value): (String, String, f32) =
-            record.deserialize(None).map_err(NodeError::CsvError)?;
-        let trust_entry = TrustEntry::new(from, to, value);
-        trust_entries.push(trust_entry);
-    }
-
-    let mut seed_entries = Vec::new();
-    for result in seed_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
-        let seed_entry = ScoreEntry::new(id, value);
-        seed_entries.push(seed_entry);
-    }
-
-    let mut scores_entries = Vec::new();
-    for result in scores_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
-        let score_entry = ScoreEntry::new(id, value);
-        scores_entries.push(score_entry);
-    }
-
-    info!("Starting core compute...");
-    let mock_domain = Domain::default();
-    let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
-    runner
-        .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-        .map_err(NodeError::VerificationRunnerError)?;
-    runner
-        .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-        .map_err(NodeError::VerificationRunnerError)?;
-    runner.update_commitment(
-        Hash::from_bytes(compute_res.computeId.to_be_bytes()),
-        Hash::from_slice(compute_res.commitment.as_slice()),
-    );
-    runner
-        .update_scores(
-            mock_domain.clone(),
-            Hash::from_bytes(compute_res.computeId.to_be_bytes()),
-            scores_entries,
-        )
-        .map_err(NodeError::VerificationRunnerError)?;
-    let result = runner
-        .verify_job(
-            mock_domain,
-            Hash::from_bytes(compute_res.computeId.to_be_bytes()),
-        )
-        .map_err(NodeError::VerificationRunnerError)?;
-    info!("Core Compute verification completed. Result({})", result);
-
-    let challenge_window_open =
-        (block.header.timestamp - log_block.header.timestamp) < challenge_window;
-    info!("Challenge window open: {}", challenge_window_open);
-
-    if !result && challenge_window_open {
-        info!("Submitting challenge. Calling 'submitChallenge'");
-        let res = contract.submitChallenge(compute_res.computeId).send().await;
-        if let Ok(res) = res {
-            let tx_res = res.watch().await.unwrap();
-            info!("'submitChallenge' completed. Tx Hash({:#})", tx_res);
-        } else {
-            let err = res.unwrap_err();
-            error!("'submitChallenge' failed. {}", err);
-        }
-    }
-
-    Ok(())
-}
-
 async fn handle_meta_compute_result<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
@@ -239,7 +67,6 @@ async fn handle_meta_compute_result<PH: Provider>(
     log: Log,
     meta_compute_request_map: &HashMap<Uint<256, 4>, MetaComputeRequestEvent>,
     meta_challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
-    meta_finalized_jobs_map: &HashMap<Uint<256, 4>, Log>,
     challenge_window: u64,
 ) -> Result<(), NodeError> {
     let meta_result: Vec<JobResult> =
@@ -254,7 +81,6 @@ async fn handle_meta_compute_result<PH: Provider>(
     debug!("Log: {:?}", log);
 
     let already_challenged = meta_challanged_jobs_map.contains_key(&meta_compute_res.computeId);
-    let already_finalized = meta_finalized_jobs_map.contains_key(&meta_compute_res.computeId);
 
     let block = provider
         .get_block(BlockId::Number(BlockNumberOrTag::Latest))
@@ -268,7 +94,7 @@ async fn handle_meta_compute_result<PH: Provider>(
         .await
         .map_err(|e| NodeError::TxError(format!("{e:}")))?
         .unwrap();
-    if already_challenged || already_finalized {
+    if already_challenged {
         return Ok(());
     }
 
@@ -451,31 +277,6 @@ pub async fn run<P: Provider>(
 ) {
     let challenge_window = contract.CHALLENGE_WINDOW().call().await.unwrap();
 
-    let compute_request_filter = contract
-        .ComputeRequestEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-    let compute_result_filter = contract
-        .ComputeResultEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-    let challenge_filter = contract
-        .ChallengeEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-    let job_finalised_filter = contract
-        .JobFinalized_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-
     // Meta jobs filters
     let meta_compute_request_filter = contract
         .MetaComputeRequestEvent_filter()
@@ -495,82 +296,19 @@ pub async fn run<P: Provider>(
         .watch()
         .await
         .unwrap();
-    let meta_job_finalised_filter = contract
-        .MetaJobFinalized_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-
-    let mut compute_request_stream = compute_request_filter.into_stream();
-    let mut compute_result_stream = compute_result_filter.into_stream();
-    let mut challenge_stream = challenge_filter.into_stream();
-    let mut job_finalised_stream = job_finalised_filter.into_stream();
 
     // Meta streams
     let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
     let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
     let mut meta_challenge_stream = meta_challenge_filter.into_stream();
-    let mut meta_job_finalised_stream = meta_job_finalised_filter.into_stream();
-
-    let mut compute_request_map = HashMap::new();
-    let mut challanged_jobs_map = HashMap::new();
-    let mut finalized_jobs_map = HashMap::new();
 
     let mut meta_compute_request_map = HashMap::new();
     let mut meta_challanged_jobs_map = HashMap::new();
-    let mut meta_finalized_jobs_map = HashMap::new();
 
     info!("Running the challenger node...");
 
     loop {
         select! {
-            compute_request_event = compute_request_stream.next() => {
-                if let Some(res) = compute_request_event {
-                    let (compute_req, log): (ComputeRequestEvent, Log) = res.unwrap();
-                    info!(
-                        "ComputeRequestEvent: ComputeId({}), TrustId({:#}), SeedId({:#})",
-                        compute_req.computeId, compute_req.trust_id, compute_req.seed_id
-                    );
-                    debug!("{:?}", log);
-
-                    compute_request_map.insert(compute_req.computeId, compute_req);
-                }
-            }
-            compute_result_event = compute_result_stream.next() => {
-                if let Some(res) = compute_result_event {
-                    let (compute_res, log): (ComputeResultEvent, Log) = res.unwrap();
-                    handle_compute_result(
-                        &contract,
-                        &provider,
-                        &s3_client,
-                        compute_res,
-                        log,
-                        &compute_request_map,
-                        &challanged_jobs_map,
-                        &finalized_jobs_map,
-                        challenge_window._0
-                    ).await.unwrap();
-                }
-            }
-            challenge_event = challenge_stream.next() => {
-                if let Some(res) = challenge_event {
-                    let (challenge, log): (ChallengeEvent, Log) = res.unwrap();
-                    info!("ChallengeEvent: ComputeId({:#})", challenge.computeId);
-                    debug!("{:?}", log);
-
-                    challanged_jobs_map.insert(challenge.computeId, log);
-                }
-            }
-            job_finalised_event = job_finalised_stream.next() => {
-                if let Some(res) = job_finalised_event {
-                    let (job_finalized, log): (JobFinalized, Log) = res.unwrap();
-                    info!("JobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
-                    debug!("{:?}", log);
-
-                    finalized_jobs_map.insert(job_finalized.computeId, log);
-                }
-            }
             meta_compute_request_event = meta_compute_request_stream.next() => {
                 if let Some(res) = meta_compute_request_event {
                     let (compute_req, log): (MetaComputeRequestEvent, Log) = res.unwrap();
@@ -594,7 +332,6 @@ pub async fn run<P: Provider>(
                         log,
                         &meta_compute_request_map,
                         &meta_challanged_jobs_map,
-                        &meta_finalized_jobs_map,
                         challenge_window._0,
                     ).await.unwrap();
                 }
@@ -610,15 +347,6 @@ pub async fn run<P: Provider>(
                     debug!("{:?}", log);
 
                     meta_challanged_jobs_map.insert(challenge.computeId, log);
-                }
-            }
-            meta_job_finalised_event = meta_job_finalised_stream.next() => {
-                if let Some(res) = meta_job_finalised_event {
-                    let (job_finalized, log): (MetaJobFinalized, Log) = res.unwrap();
-                    info!("MetaJobFinalizedEvent: ComputeId({:#})", job_finalized.computeId);
-                    debug!("{:?}", log);
-
-                    meta_finalized_jobs_map.insert(job_finalized.computeId, log);
                 }
             }
         }

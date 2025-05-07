@@ -2,28 +2,57 @@
 pragma solidity ^0.8.27;
 
 interface IOpenRankManager {
-    function submitComputeRequest(
-        bytes32 trustId,
-        bytes32 seedId
+    error ComputeRequestNotFound();
+    error ComputeResultAlreadySubmitted();
+    error ComputeResultNotFound();
+    error ChallengeNotFound();
+    error ChallengePeriodExpired();
+    error CallerNotWhitelisted();
+    error InvalidReservationForImageId();
+
+    struct MetaComputeRequest {
+        address user;
+        uint256 id;
+        bytes32 jobDescriptionId;
+        uint256 timestamp;
+    }
+
+    struct MetaComputeResult {
+        address computer;
+        uint256 computeId;
+        bytes32 metaCommitment;
+        bytes32 resultsId;
+        uint256 timestamp;
+    }
+
+    struct MetaChallenge {
+        address challenger;
+        uint256 computeId;
+        uint256 subJobId;
+        uint256 timestamp;
+        uint256 requestIndex;
+    }
+
+    event MetaComputeRequestEvent(uint256 indexed computeId, bytes32 jobDescriptionId);
+    event MetaComputeResultEvent(uint256 indexed computeId, bytes32 commitment, bytes32 resultsId);
+    event MetaChallengeEvent(uint256 indexed computeId, uint256 subJobId);
+
+    function setImageId(
+        uint32 _imageId
+    ) external;
+    function submitMetaComputeRequest(
+        bytes32 jobDescriptionId
     ) external returns (uint256 computeId);
-
-    function submitComputeResult(
+    function submitMetaComputeResult(
         uint256 computeId,
-        bytes32 commitment,
-        bytes32 scoresId
+        bytes32 metaCommitment,
+        bytes32 resultsId
     ) external returns (bool);
-
-    function submitChallenge(
-        uint256 computeId
-    ) external returns (bool);
-
-    function finalizeJob(
-        uint256 computeId
-    ) external returns (bool);
-
-    function owner() external returns (address);
-
+    function submitMetaChallenge(uint256 computeId, uint256 subJobId) external returns (bool);
     function isAllowlistedComputer(
         address computer
-    ) external view returns (bool);
+    ) external returns (bool);
+    function updateChallengeWindow(
+        uint64 challengeWindow
+    ) external;
 }

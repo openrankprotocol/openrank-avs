@@ -1,10 +1,7 @@
 mod actions;
 mod sol;
 
-use actions::{
-    download_meta, download_scores, download_seed, download_trust, upload_meta, upload_seed,
-    upload_trust,
-};
+use actions::{download_meta, download_scores, upload_meta, upload_seed, upload_trust};
 use alloy::hex::FromHex;
 use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::ProviderBuilder;
@@ -24,29 +21,6 @@ use std::fs::read_dir;
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
 enum Method {
-    UploadTrust {
-        path: String,
-    },
-    UploadSeed {
-        path: String,
-    },
-    DownloadTrust {
-        trust_id: String,
-        path: String,
-    },
-    DownloadSeed {
-        seed_id: String,
-        path: String,
-    },
-    DownloadScores {
-        scores_id: String,
-        path: String,
-    },
-    ComputeRequest {
-        trust_id: String,
-        seed_id: String,
-    },
-
     // Meta jobs
     MetaDownloadScores {
         results_id: String,
@@ -109,37 +83,6 @@ async fn main() -> Result<(), AwsError> {
         .unwrap();
 
     match cli.method {
-        Method::UploadTrust { path } => {
-            let hash = upload_trust(client.clone(), path).await?;
-            println!("Hash:({})", hash);
-        }
-        Method::UploadSeed { path } => {
-            let hash = upload_seed(client.clone(), path).await?;
-            println!("Hash:({})", hash);
-        }
-        Method::DownloadTrust { trust_id, path } => download_trust(client, trust_id, path).await?,
-        Method::DownloadSeed { seed_id, path } => download_seed(client, seed_id, path).await?,
-        Method::DownloadScores { scores_id, path } => {
-            download_scores(client, scores_id, path).await?
-        }
-        Method::ComputeRequest { trust_id, seed_id } => {
-            let provider = ProviderBuilder::new()
-                .wallet(wallet)
-                .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
-
-            let contract =
-                OpenRankManager::new(Address::from_hex(manager_address).unwrap(), provider);
-
-            let trust_id_bytes = FixedBytes::from_hex(trust_id).unwrap();
-            let seed_id_bytes = FixedBytes::from_hex(seed_id).unwrap();
-
-            let res = contract
-                .submitComputeRequest(trust_id_bytes, seed_id_bytes)
-                .send()
-                .await
-                .unwrap();
-            println!("Tx Hash: {}", res.watch().await.unwrap());
-        }
         Method::MetaDownloadScores { results_id } => {
             let job_results: Vec<JobResult> =
                 download_meta(client.clone(), results_id).await.unwrap();

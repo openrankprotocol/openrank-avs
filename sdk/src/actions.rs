@@ -66,7 +66,7 @@ pub async fn upload_seed(client: Client, path: String) -> Result<String, AwsErro
     Ok(hex::encode(hash))
 }
 
-pub async fn download_trust(
+pub async fn _download_trust(
     client: Client,
     trust_id: String,
     path: String,
@@ -84,7 +84,7 @@ pub async fn download_trust(
     Ok(())
 }
 
-pub async fn download_seed(client: Client, seed_id: String, path: String) -> Result<(), AwsError> {
+pub async fn _download_seed(client: Client, seed_id: String, path: String) -> Result<(), AwsError> {
     let mut file = File::create(path).unwrap();
     let mut res = client
         .get_object()

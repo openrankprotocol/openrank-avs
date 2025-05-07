@@ -63,6 +63,6 @@ async fn main() {
     if cli.challenger {
         challenger::run(contract, provider_http, client).await;
     } else {
-        computer::run(contract, contract_ws, provider_http, client).await;
+        computer::run(contract, contract_ws, client).await;
     }
 }
