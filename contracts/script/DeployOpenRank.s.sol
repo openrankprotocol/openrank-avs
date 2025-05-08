@@ -16,6 +16,8 @@ contract DeployOpenRank is Script {
     DeployEigenLayerCore public coreDeployer;
     DeployRxp_Local public rxpDeployer;
     OpenRankManager public orManager;
+    DeployEigenLayerCore.EigenLayerDeployment coreDeployment;
+    DeployRxp_Local.RXPDeployment rxpDeployment;
 
     address initialOwner;
 
@@ -24,32 +26,27 @@ contract DeployOpenRank is Script {
         rxpDeployer = new DeployRxp_Local();
         initialOwner = msg.sender;
 
-        vm.startPrank(initialOwner);
         _deployCore();
-        vm.stopPrank();
-
-        vm.startPrank(initialOwner);
         _deployRxp();
-        vm.stopPrank();
 
-        vm.startPrank(initialOwner);
+        vm.startBroadcast(initialOwner);
         _deployOrManager();
         vm.stopPrank();
     }
 
     function _deployCore() internal {
         string memory configFile = "deploy_eigenlayer_core.config.json";
-        coreDeployer.run(configFile, false);
+        coreDeployment = coreDeployer.run(configFile, true);
     }
 
     function _deployRxp() internal {
-        rxpDeployer.run(false);
+        rxpDeployment = rxpDeployer.run(true);
     }
 
     function _deployOrManager() internal {
-        IPermissionController permissionController = coreDeployer.permissionController();
-        IReservationRegistry reservationRegistry = rxpDeployer.reservationRegistry();
-        IReexecutionEndpoint reexecutionEndpoint = rxpDeployer.reexecutionEndpoint();
+        IPermissionController permissionController = coreDeployment.core.permissionController;
+        IReservationRegistry reservationRegistry = rxpDeployment.reservationRegistry;
+        IReexecutionEndpoint reexecutionEndpoint = rxpDeployment.reexecutionEndpoint;
 
         orManager = new OpenRankManager(address(permissionController), address(reservationRegistry), address(reexecutionEndpoint));
         orManager.setAppointee({
@@ -63,10 +60,10 @@ contract DeployOpenRank is Script {
             selector: IReservationRegistry.addImage.selector
         });
 
-        uint256 fee = reservationRegistry.getReservationTransferAmount();
+        uint256 fee = reservationRegistry.getReservationTransferAmount(IReservationRegistry.ResourceConfigType.CPU);
         IERC20 paymentToken = reservationRegistry.paymentToken();
         paymentToken.approve(address(reservationRegistry), fee);
-        uint256 reservationId = reservationRegistry.reserve(address(orManager), fee);
+        uint256 reservationId = reservationRegistry.reserve(address(orManager), IReservationRegistry.ResourceConfigType.CPU, fee);
         bytes[] memory imageBytes = new bytes[](0);
         reservationRegistry.addImage(reservationId, imageBytes);
     }

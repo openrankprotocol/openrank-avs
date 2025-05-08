@@ -99,7 +99,8 @@ contract OpenRankManager is OpenRankManagerStorage {
         paymentToken.approve(address(rxp), requiredFee);
 
         bytes memory inputData = abi.encode(computeId, subJobId);
-        uint256 requestIndex = rxp.requestReexecution(imageId, inputData);
+        bytes32 taskId = keccak256(inputData);
+        uint256 requestIndex = rxp.requestReexecution(imageId, hex"", taskId, inputData);
         MetaChallenge memory challenge = MetaChallenge({
             challenger: msg.sender,
             computeId: computeId,
