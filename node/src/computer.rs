@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
 use std::time::Instant;
+use tokio::fs::create_dir_all;
 use tokio::select;
 use tracing::{debug, info};
 
@@ -111,6 +112,8 @@ async fn handle_meta_compute_request<PH: Provider>(
             compute_req.trust_id, compute_req.seed_id
         );
 
+        create_dir_all(&format!("./trust/")).await.unwrap();
+        create_dir_all(&format!("./seed/")).await.unwrap();
         let mut trust_file = File::create(&format!("./trust/{}", compute_req.trust_id))
             .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
         let mut seed_file = File::create(&format!("./seed/{}", compute_req.seed_id))

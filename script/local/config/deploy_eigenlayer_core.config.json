@@ -1,11 +1,11 @@
 {
     "maintainer": "filip@karma3labs.com",
     "multisig_addresses": {
-        "operationsMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "communityMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "pauserMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "executorMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "timelock": "0x679A295B982E75C1060BCE840ca8044fFD340EAf"
+        "operationsMultisig": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "communityMultisig": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "pauserMultisig": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "executorMultisig": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+        "timelock": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"
     },
     "strategies": [
         {
@@ -53,7 +53,7 @@
         "MAX_RETROACTIVE_LENGTH": 7776000,
         "MAX_FUTURE_LENGTH": 2592000,
         "GENESIS_REWARDS_TIMESTAMP": 1710979200,
-        "rewards_updater_address": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+        "rewards_updater_address": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
         "activation_delay": 7200,
         "calculation_interval_seconds": 604800,
         "global_operator_commission_bips": 1000,

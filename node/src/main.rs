@@ -15,7 +15,7 @@ use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
 use openrank_common::logs::setup_tracing;
-use sol::OpenRankManager;
+use sol::{OpenRankManager, ReexecutionEndpoint};
 
 const BUCKET_NAME: &str = "openrank-data-dev";
 
@@ -38,6 +38,8 @@ async fn main() {
     let wss_url = std::env::var("CHAIN_WSS_URL").expect("CHAIN_WSS_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
+    let rxp_address = std::env::var("REEXECUTION_ENDPOINT_ADDRESS")
+        .expect("REEXECUTION_ENDPOINT_ADDRESS must be set.");
     let mnemonic = std::env::var("MNEMONIC").expect("MNEMONIC must be set.");
     let config = from_env().region("us-west-2").load().await;
     let client = Client::new(&config);
@@ -56,13 +58,16 @@ async fn main() {
     let ws = WsConnect::new(wss_url);
     let provider_wss = ProviderBuilder::new().on_ws(ws).await.unwrap();
 
-    let address = Address::from_hex(manager_address).unwrap();
-    let contract = OpenRankManager::new(address, provider_http.clone());
-    let contract_ws = OpenRankManager::new(address, provider_wss);
+    let manager_address = Address::from_hex(manager_address).unwrap();
+    let manager_contract = OpenRankManager::new(manager_address, provider_http.clone());
+    let manager_contract_ws = OpenRankManager::new(manager_address, provider_wss.clone());
+
+    let rxp_address = Address::from_hex(rxp_address).unwrap();
+    let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_wss);
 
     if cli.challenger {
-        challenger::run(contract, provider_http, client).await;
+        challenger::run(manager_contract, rxp_contract, provider_http, client).await;
     } else {
-        computer::run(contract, contract_ws, client).await;
+        computer::run(manager_contract, manager_contract_ws, client).await;
     }
 }

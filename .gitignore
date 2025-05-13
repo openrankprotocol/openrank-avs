@@ -16,4 +16,6 @@ contracts/docs/
 # Dotenv file
 .env
 
-data/
+seed/
+trust/
+scores/

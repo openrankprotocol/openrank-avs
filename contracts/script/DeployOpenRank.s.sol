@@ -66,5 +66,8 @@ contract DeployOpenRank is Script {
         uint256 reservationId = reservationRegistry.reserve(address(orManager), IReservationRegistry.ResourceConfigType.CPU, fee);
         bytes[] memory imageBytes = new bytes[](0);
         reservationRegistry.addImage(reservationId, imageBytes);
+
+        console.log("address(orManager): ", address(orManager));
+        console.log("address(reexecutionEndpoint): ", address(reexecutionEndpoint));
     }
 }

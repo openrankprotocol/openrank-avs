@@ -2,6 +2,7 @@ use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
     MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
+use crate::sol::ReexecutionEndpoint::{ReexecutionEndpointInstance, ReexecutionRequestCreated};
 use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
@@ -22,6 +23,7 @@ use sha3::Keccak256;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
+use tokio::fs::create_dir_all;
 use tokio::select;
 use tracing::{debug, error, info};
 
@@ -98,6 +100,9 @@ async fn handle_meta_compute_result<PH: Provider>(
         return Ok(());
     }
 
+    if !meta_compute_request_map.contains_key(&meta_compute_res.computeId) {
+        return Ok(());
+    }
     let compute_req = meta_compute_request_map
         .get(&meta_compute_res.computeId)
         .unwrap();
@@ -111,6 +116,9 @@ async fn handle_meta_compute_result<PH: Provider>(
     for (i, compute_res) in meta_result.iter().enumerate() {
         info!("Downloading data...");
 
+        create_dir_all(&format!("./trust/")).await.unwrap();
+        create_dir_all(&format!("./seed/")).await.unwrap();
+        create_dir_all(&format!("./scores/")).await.unwrap();
         let mut trust_file = File::create(&format!("./trust/{}", job_description[i].trust_id))
             .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
         let mut seed_file = File::create(&format!("./seed/{}", job_description[i].seed_id))
@@ -270,28 +278,35 @@ async fn handle_meta_compute_result<PH: Provider>(
     Ok(())
 }
 
-pub async fn run<P: Provider>(
-    contract: OpenRankManagerInstance<(), P>,
+pub async fn run<P: Provider, PW: Provider>(
+    manager_contract: OpenRankManagerInstance<(), P>,
+    rxp_contract: ReexecutionEndpointInstance<(), PW>,
     provider: P,
     s3_client: Client,
 ) {
-    let challenge_window = contract.CHALLENGE_WINDOW().call().await.unwrap();
+    let challenge_window = manager_contract.CHALLENGE_WINDOW().call().await.unwrap();
 
     // Meta jobs filters
-    let meta_compute_request_filter = contract
+    let meta_compute_request_filter = manager_contract
         .MetaComputeRequestEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let meta_compute_result_filter = contract
+    let meta_compute_result_filter = manager_contract
         .MetaComputeResultEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
         .unwrap();
-    let meta_challenge_filter = contract
+    let meta_challenge_filter = manager_contract
         .MetaChallengeEvent_filter()
+        .from_block(BlockNumberOrTag::Latest)
+        .watch()
+        .await
+        .unwrap();
+    let reexecution_request_filter = rxp_contract
+        .ReexecutionRequestCreated_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
@@ -301,6 +316,7 @@ pub async fn run<P: Provider>(
     let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
     let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
     let mut meta_challenge_stream = meta_challenge_filter.into_stream();
+    let mut reexecution_request_stream = reexecution_request_filter.into_stream();
 
     let mut meta_compute_request_map = HashMap::new();
     let mut meta_challanged_jobs_map = HashMap::new();
@@ -325,7 +341,7 @@ pub async fn run<P: Provider>(
                 if let Some(res) = meta_compute_result_event {
                     let (compute_res, log): (MetaComputeResultEvent, Log) = res.unwrap();
                     handle_meta_compute_result(
-                        &contract,
+                        &manager_contract,
                         &provider,
                         &s3_client,
                         compute_res,
@@ -347,6 +363,18 @@ pub async fn run<P: Provider>(
                     debug!("{:?}", log);
 
                     meta_challanged_jobs_map.insert(challenge.computeId, log);
+                }
+            }
+            reexecution_request_event = reexecution_request_stream.next() => {
+                if let Some(res) = reexecution_request_event {
+                    let (request, log): (ReexecutionRequestCreated, Log) = res.unwrap();
+                    info!(
+                        "ReexecutionRequestCreated: requestIndex({:#}) avs({:#}), reservationID({:#})",
+                        request.requestIndex,
+                        request.avs,
+                        request.reservationID,
+                    );
+                    debug!("{:?}", log);
                 }
             }
         }
