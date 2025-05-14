@@ -22,9 +22,9 @@ abstract contract OpenRankManagerStorage is IOpenRankManager {
     mapping(address => bool) allowlistedChallengers;
     mapping(address => bool) allowlistedUsers;
 
-    mapping(uint256 => MetaComputeRequest) metaComputeRequests;
-    mapping(uint256 => MetaComputeResult) metaComputeResults;
-    mapping(uint256 => MetaChallenge) metaChallenges;
+    mapping(uint256 => MetaComputeRequest) public metaComputeRequests;
+    mapping(uint256 => MetaComputeResult) public metaComputeResults;
+    mapping(uint256 => MetaChallenge) public metaChallenges;
 
     constructor(
         address _permissionController,

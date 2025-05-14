@@ -3,7 +3,6 @@ use crate::sol::OpenRankManager::{
     MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
 use crate::sol::ReexecutionEndpoint::{ReexecutionEndpointInstance, ReexecutionRequestCreated};
-use crate::BUCKET_NAME;
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
 use alloy::primitives::Uint;
@@ -42,11 +41,12 @@ struct JobResult {
 
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
+    bucket_name: &str,
     meta_id: String,
 ) -> Result<T, NodeError> {
     let res = client
         .get_object()
-        .bucket(BUCKET_NAME)
+        .bucket(bucket_name)
         .key(format!("meta/{}", meta_id))
         .send()
         .await
@@ -65,16 +65,19 @@ async fn handle_meta_compute_result<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
+    bucket_name: &str,
     meta_compute_res: MetaComputeResultEvent,
     log: Log,
     meta_compute_request_map: &HashMap<Uint<256, 4>, MetaComputeRequestEvent>,
     meta_challanged_jobs_map: &HashMap<Uint<256, 4>, Log>,
     challenge_window: u64,
 ) -> Result<(), NodeError> {
-    let meta_result: Vec<JobResult> =
-        download_meta(s3_client, meta_compute_res.resultsId.encode_hex())
-            .await
-            .unwrap();
+    let meta_result: Vec<JobResult> = download_meta(
+        s3_client,
+        bucket_name,
+        meta_compute_res.resultsId.encode_hex(),
+    )
+    .await?;
 
     info!(
         "ComputeResultEvent: ComputeId({}), Commitment({:#}), ResultsId({:#})",
@@ -107,8 +110,12 @@ async fn handle_meta_compute_result<PH: Provider>(
         .get(&meta_compute_res.computeId)
         .unwrap();
 
-    let job_description: Vec<JobDescription> =
-        download_meta(s3_client, compute_req.jobDescriptionId.encode_hex()).await?;
+    let job_description: Vec<JobDescription> = download_meta(
+        s3_client,
+        bucket_name,
+        compute_req.jobDescriptionId.encode_hex(),
+    )
+    .await?;
 
     let mut global_result = true;
     let mut sub_job_failed = 0;
@@ -128,21 +135,21 @@ async fn handle_meta_compute_result<PH: Provider>(
 
         let mut trust_res = s3_client
             .get_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("trust/{}", job_description[i].trust_id))
             .send()
             .await
             .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut seed_res = s3_client
             .get_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("seed/{}", job_description[i].seed_id))
             .send()
             .await
             .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut scores_res = s3_client
             .get_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("scores/{}", compute_res.scores_id))
             .send()
             .await
@@ -261,9 +268,8 @@ async fn handle_meta_compute_result<PH: Provider>(
 
     if !global_result && challenge_window_open {
         info!("Submitting challenge. Calling 'metaSubmitChallenge'");
-        let sub_job_failed_uint = Uint::from(sub_job_failed);
         let res = contract
-            .submitMetaChallenge(meta_compute_res.computeId, sub_job_failed_uint)
+            .submitMetaChallenge(meta_compute_res.computeId, sub_job_failed as u32)
             .send()
             .await;
         if let Ok(res) = res {
@@ -283,6 +289,7 @@ pub async fn run<P: Provider, PW: Provider>(
     rxp_contract: ReexecutionEndpointInstance<(), PW>,
     provider: P,
     s3_client: Client,
+    bucket_name: &str,
 ) {
     let challenge_window = manager_contract.CHALLENGE_WINDOW().call().await.unwrap();
 
@@ -344,6 +351,7 @@ pub async fn run<P: Provider, PW: Provider>(
                         &manager_contract,
                         &provider,
                         &s3_client,
+                        bucket_name,
                         compute_res,
                         log,
                         &meta_compute_request_map,

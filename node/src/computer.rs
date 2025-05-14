@@ -2,7 +2,6 @@ use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
     MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
-use crate::BUCKET_NAME;
 use alloy::eips::BlockNumberOrTag;
 use alloy::hex::{self, ToHexExt};
 use alloy::primitives::FixedBytes;
@@ -50,7 +49,11 @@ impl JobResult {
     }
 }
 
-pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<String, NodeError> {
+pub async fn upload_meta<T: Serialize>(
+    client: &Client,
+    bucket_name: &str,
+    meta: T,
+) -> Result<String, NodeError> {
     let mut bytes = serde_json::to_vec(&meta).map_err(NodeError::SerdeError)?;
     let body = ByteStream::from(bytes.clone());
 
@@ -59,7 +62,7 @@ pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<Strin
     let hash = hasher.finalize().to_vec();
     client
         .put_object()
-        .bucket(BUCKET_NAME)
+        .bucket(bucket_name)
         .key(format!("meta/{}", hex::encode(hash.clone())))
         .body(body)
         .send()
@@ -70,11 +73,12 @@ pub async fn upload_meta<T: Serialize>(client: &Client, meta: T) -> Result<Strin
 
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
+    bucket_name: &str,
     meta_id: String,
 ) -> Result<T, NodeError> {
     let res = client
         .get_object()
-        .bucket(BUCKET_NAME)
+        .bucket(bucket_name)
         .key(format!("meta/{}", meta_id))
         .send()
         .await
@@ -92,12 +96,17 @@ pub async fn download_meta<T: DeserializeOwned>(
 async fn handle_meta_compute_request<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     s3_client: &Client,
+    bucket_name: &str,
     meta_compute_req: MetaComputeRequestEvent,
     log: Log,
 ) -> Result<(), NodeError> {
     let start = Instant::now();
-    let meta_job: Vec<JobDescription> =
-        download_meta(s3_client, meta_compute_req.jobDescriptionId.encode_hex()).await?;
+    let meta_job: Vec<JobDescription> = download_meta(
+        s3_client,
+        bucket_name,
+        meta_compute_req.jobDescriptionId.encode_hex(),
+    )
+    .await?;
     info!(
         "MetaComputeRequestEvent: JobDescriptionId({})",
         meta_compute_req.jobDescriptionId
@@ -122,14 +131,14 @@ async fn handle_meta_compute_request<PH: Provider>(
         info!("Downloading data...");
         let mut trust_res = s3_client
             .get_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("trust/{}", compute_req.trust_id))
             .send()
             .await
             .map_err(|e| NodeError::AwsError(e.into()))?;
         let mut seed_res = s3_client
             .get_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("seed/{}", compute_req.seed_id))
             .send()
             .await
@@ -224,7 +233,7 @@ async fn handle_meta_compute_request<PH: Provider>(
         let body = ByteStream::from(file_bytes);
         s3_client
             .put_object()
-            .bucket(BUCKET_NAME)
+            .bucket(bucket_name)
             .key(format!("scores/{}", scores_id))
             .body(body)
             .send()
@@ -243,7 +252,7 @@ async fn handle_meta_compute_request<PH: Provider>(
         .root()
         .map_err(|e| NodeError::ComputeRunnerError(compute_runner::Error::Merkle(e)))?;
 
-    let meta_id = upload_meta(&s3_client, job_results).await?;
+    let meta_id = upload_meta(&s3_client, bucket_name, job_results).await?;
 
     let meta_commitment_bytes = FixedBytes::from_slice(meta_commitment.inner());
     let meta_id_bytes = FixedBytes::from_slice(hex::decode(meta_id).unwrap().as_slice());
@@ -277,6 +286,7 @@ pub async fn run<PH: Provider, PW: Provider>(
     contract: OpenRankManagerInstance<(), PH>,
     contract_ws: OpenRankManagerInstance<(), PW>,
     s3_client: Client,
+    bucket_name: &str,
 ) {
     // Metaed jobs events
     let meta_compute_request_filter = contract_ws
@@ -313,6 +323,7 @@ pub async fn run<PH: Provider, PW: Provider>(
                     handle_meta_compute_request(
                         &contract,
                         &s3_client,
+                        bucket_name,
                         compute_req,
                         log
                     ).await.unwrap();

@@ -3,6 +3,7 @@
 RXP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../contracts/lib/rxp
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../script
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REGISTER_BIN_PATH=/Users/filiplazovic/go/bin/register
 
 PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 OPERATOR_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
@@ -72,7 +73,7 @@ cast rpc anvil_mine 12000 --rpc-url "$RPC_URL"
 # Register Operator to RxP AVS
 SOCKET="127.0.0.1:6666"
 echo "Registering operator to AVS with BLS private key $BLS_PRIVATE_KEY, ECDSA private key $PRIVATE_KEY, socket $SOCKET"
-go run "$RXP_DIR"/scripts/register.go \
+$REGISTER_BIN_PATH \
   --eth-rpc-url "$RPC_URL" \
   --eigenlayer-deployment-path "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json \
   --avs-deployment-path "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json \

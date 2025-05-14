@@ -1,8 +1,3 @@
-mod challenger;
-mod computer;
-mod error;
-mod sol;
-
 use alloy::hex::FromHex;
 use alloy::primitives::Address;
 use alloy::providers::{ProviderBuilder, WsConnect};
@@ -15,7 +10,8 @@ use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
 use openrank_common::logs::setup_tracing;
-use sol::{OpenRankManager, ReexecutionEndpoint};
+use openrank_node::sol::{OpenRankManager, ReexecutionEndpoint};
+use openrank_node::{challenger, computer};
 
 const BUCKET_NAME: &str = "openrank-data-dev";
 
@@ -66,8 +62,15 @@ async fn main() {
     let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_wss);
 
     if cli.challenger {
-        challenger::run(manager_contract, rxp_contract, provider_http, client).await;
+        challenger::run(
+            manager_contract,
+            rxp_contract,
+            provider_http,
+            client,
+            BUCKET_NAME,
+        )
+        .await;
     } else {
-        computer::run(manager_contract, manager_contract_ws, client).await;
+        computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await;
     }
 }

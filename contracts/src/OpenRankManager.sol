@@ -85,7 +85,7 @@ contract OpenRankManager is OpenRankManagerStorage {
         return true;
     }
 
-    function submitMetaChallenge(uint256 computeId, uint256 subJobId) external returns (bool) {
+    function submitMetaChallenge(uint256 computeId, uint32 subJobId) external returns (bool) {
         require(allowlistedChallengers[msg.sender], CallerNotWhitelisted());
         require(metaComputeRequests[computeId].id != 0, ComputeRequestNotFound());
         require(metaComputeResults[computeId].computeId != 0, ComputeResultNotFound());

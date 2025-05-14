@@ -26,7 +26,6 @@ contract OpenRankManagerTest is Test {
 
     function testMetaChallenge() public {
         vm.startPrank(initialOwner);
-        DeployRxp_Local rxpDeployer = openRankDeployer.rxpDeployer();
 
         OpenRankManager orManager = openRankDeployer.orManager();
         uint256 jobId = orManager.submitMetaComputeRequest(
@@ -40,7 +39,7 @@ contract OpenRankManagerTest is Test {
 
         vm.expectEmit();
         bytes memory inputData = abi.encode(jobId, 0);
-        emit IReexecutionEndpoint.ReexecutionRequestCreated(0, address(orManager), 0, 0, inputData, 1);
+        emit IReexecutionEndpoint.ReexecutionRequestCreated(0, address(orManager), 0, 0, hex"", bytes32(0), inputData, 1);
 
         orManager.submitMetaChallenge(jobId, 0);
 
