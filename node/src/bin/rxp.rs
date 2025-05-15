@@ -3,9 +3,11 @@ use alloy::primitives::{Address, FixedBytes, Uint};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
-use alloy::signers::local::MnemonicBuilder;
+use alloy::signers::local::{LocalSigner, MnemonicBuilder, PrivateKeySigner};
 use alloy::transports::http::reqwest::Url;
-use aws_config::{from_env, SdkConfig};
+use alloy_rlp::{Encodable, RlpEncodable};
+use alloy_sol_types::{sol_data::Uint as SolUint, SolType, SolValue};
+use aws_config::SdkConfig;
 use aws_credential_types::Credentials;
 use aws_sdk_s3::config::SharedCredentialsProvider;
 use aws_sdk_s3::Client;
@@ -23,7 +25,13 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
 use std::io::Write;
+use tonic::transport::Server;
+use tonic::{Request, Response, Status};
 use tracing::info;
+
+use performer_service_server::{PerformerService, PerformerServiceServer};
+
+tonic::include_proto!("rxp");
 
 #[macro_use]
 extern crate dotenv_codegen;
@@ -46,10 +54,16 @@ struct JobResult {
 #[derive(Debug, Default)]
 pub struct OpenRankExeInput {
     compute_id: Uint<256, 4>,
-    job_id: Uint<32, 1>,
+    job_id: u32,
 }
 
-#[derive(Debug, Default)]
+impl OpenRankExeInput {
+    pub fn new(compute_id: Uint<256, 4>, job_id: u32) -> Self {
+        Self { compute_id, job_id }
+    }
+}
+
+#[derive(Debug, Default, RlpEncodable)]
 pub struct OpenRankExeResult {
     result: bool,
     meta_commitment: FixedBytes<32>,
@@ -88,7 +102,7 @@ pub async fn run<P: Provider>(
         .await
         .map_err(|e| NodeError::TxError(format!("{e:}")))?;
     let meta_result: Vec<JobResult> = download_meta(&s3_client, res.resultsId.encode_hex()).await?;
-    let sub_job_result = meta_result[input.job_id.into_limbs()[0] as usize].clone();
+    let sub_job_result = meta_result[input.job_id as usize].clone();
 
     let compute_request = contract
         .metaComputeRequests(input.compute_id)
@@ -98,7 +112,7 @@ pub async fn run<P: Provider>(
 
     let meta_request: Vec<JobDescription> =
         download_meta(&s3_client, compute_request.jobDescriptionId.encode_hex()).await?;
-    let sub_job_description = meta_request[input.job_id.into_limbs()[0] as usize].clone();
+    let sub_job_description = meta_request[input.job_id as usize].clone();
 
     let mut trust_res = s3_client
         .get_object()
@@ -219,6 +233,73 @@ pub async fn run<P: Provider>(
     Ok(exe_res)
 }
 
+struct RxpService {
+    wallet: PrivateKeySigner,
+    rpc_client: RpcClient,
+    s3_client: Client,
+    manager_address: Address,
+}
+
+impl RxpService {
+    pub fn new(
+        wallet: PrivateKeySigner,
+        rpc_client: RpcClient,
+        s3_client: Client,
+        manager_address: Address,
+    ) -> Self {
+        Self {
+            wallet,
+            rpc_client,
+            s3_client,
+            manager_address,
+        }
+    }
+}
+
+#[tonic::async_trait]
+impl PerformerService for RxpService {
+    async fn health_check(
+        &self,
+        _: Request<HealthCheckRequest>,
+    ) -> Result<Response<HealthCheckResponse>, Status> {
+        Ok(Response::new(HealthCheckResponse { status: 1 }))
+    }
+
+    async fn start_sync(
+        &self,
+        _: Request<StartSyncRequest>,
+    ) -> Result<Response<StartSyncResponse>, Status> {
+        Ok(Response::new(StartSyncResponse {}))
+    }
+
+    async fn execute_task(
+        &self,
+        request: Request<TaskRequest>,
+    ) -> Result<Response<TaskResponse>, Status> {
+        let provider_http = ProviderBuilder::new()
+            .wallet(self.wallet.clone())
+            .on_client(self.rpc_client.clone());
+        let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
+        let task_request = request.into_inner();
+        type Input = (SolUint<256>, SolUint<32>);
+        let (compute_id, job_id) = Input::abi_decode(task_request.payload.as_slice()).unwrap();
+        let res = run(
+            manager_contract,
+            self.s3_client.clone(),
+            OpenRankExeInput::new(compute_id, job_id),
+        )
+        .await
+        .unwrap();
+
+        let mut encoded_res = Vec::new();
+        res.encode(&mut encoded_res);
+        Ok(Response::new(TaskResponse {
+            task_id: task_request.task_id,
+            result: encoded_res,
+        }))
+    }
+}
+
 #[tokio::main]
 async fn main() {
     let rpc_url = dotenv!("CHAIN_RPC_URL");
@@ -229,11 +310,11 @@ async fn main() {
         dotenv!("AWS_SECRET_ACCESS_KEY"),
         None,
         None,
-        "rxp",
+        "openrank-rxp",
     );
     let provider = SharedCredentialsProvider::new(creds);
     let config = SdkConfig::builder().credentials_provider(provider).build();
-    let client = Client::new(&config);
+    let s3_client = Client::new(&config);
 
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
@@ -242,14 +323,14 @@ async fn main() {
         .build()
         .unwrap();
 
-    let provider_http = ProviderBuilder::new()
-        .wallet(wallet.clone())
-        .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
-
+    let rpc_client = RpcClient::new_http(Url::parse(&rpc_url).unwrap());
     let manager_address = Address::from_hex(manager_address).unwrap();
-    let manager_contract = OpenRankManager::new(manager_address, provider_http.clone());
 
-    run(manager_contract, client, OpenRankExeInput::default())
+    let service = RxpService::new(wallet, rpc_client, s3_client, manager_address);
+    let addr = "[::1]:8080".parse().unwrap();
+    Server::builder()
+        .add_service(PerformerServiceServer::new(service))
+        .serve(addr)
         .await
         .unwrap();
 }
