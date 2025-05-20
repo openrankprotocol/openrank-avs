@@ -3,15 +3,17 @@ use alloy::primitives::{Address, FixedBytes, Uint};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
-use alloy::signers::local::{LocalSigner, MnemonicBuilder, PrivateKeySigner};
+use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
 use alloy::transports::http::reqwest::Url;
 use alloy_rlp::{Encodable, RlpEncodable};
-use alloy_sol_types::{sol_data::Uint as SolUint, SolType, SolValue};
-use aws_config::SdkConfig;
+use alloy_sol_types::{sol_data::Uint as SolUint, SolType};
+use aws_config::{BehaviorVersion, SdkConfig};
 use aws_credential_types::Credentials;
 use aws_sdk_s3::config::SharedCredentialsProvider;
 use aws_sdk_s3::Client;
 use csv::StringRecord;
+use dotenv::dotenv;
+use openrank_common::logs::setup_tracing;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
@@ -302,6 +304,11 @@ impl PerformerService for RxpService {
 
 #[tokio::main]
 async fn main() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+    dotenv().ok();
+    setup_tracing();
+
+    let service_port = dotenv!("SERVICE_PORT");
     let rpc_url = dotenv!("CHAIN_RPC_URL");
     let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
     let mnemonic = dotenv!("MNEMONIC");
@@ -313,7 +320,10 @@ async fn main() {
         "openrank-rxp",
     );
     let provider = SharedCredentialsProvider::new(creds);
-    let config = SdkConfig::builder().credentials_provider(provider).build();
+    let config = SdkConfig::builder()
+        .credentials_provider(provider)
+        .behavior_version(BehaviorVersion::latest())
+        .build();
     let s3_client = Client::new(&config);
 
     let wallet = MnemonicBuilder::<English>::default()
@@ -326,8 +336,10 @@ async fn main() {
     let rpc_client = RpcClient::new_http(Url::parse(&rpc_url).unwrap());
     let manager_address = Address::from_hex(manager_address).unwrap();
 
+    info!("Running the rxp node on port {}..", service_port);
+
     let service = RxpService::new(wallet, rpc_client, s3_client, manager_address);
-    let addr = "[::1]:8080".parse().unwrap();
+    let addr = format!("[::1]:{}", service_port).parse().unwrap();
     Server::builder()
         .add_service(PerformerServiceServer::new(service))
         .serve(addr)

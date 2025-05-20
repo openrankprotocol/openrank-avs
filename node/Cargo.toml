@@ -40,6 +40,9 @@ dotenv_codegen = { workspace = true }
 tonic = { workspace = true }
 prost = { workspace = true }
 
+openssl = { version = "0.10", features = ["vendored"] }
+
+
 [build-dependencies]
 tonic-build = { workspace = true }
 prost-build = { workspace = true }

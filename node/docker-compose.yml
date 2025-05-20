@@ -1,0 +1,13 @@
+networks:
+    avsnet:
+        driver: bridge
+
+services:
+    openrank-rxp:
+        ports:
+            - "8080:8080"
+        env_file:
+            - .env
+        networks:
+            - avsnet
+        restart: unless-stopped

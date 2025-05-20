@@ -31,7 +31,7 @@ contract DeployOpenRank is Script {
 
         vm.startBroadcast(initialOwner);
         _deployOrManager();
-        vm.stopPrank();
+        vm.stopBroadcast();
     }
 
     function _deployCore() internal {
@@ -60,12 +60,15 @@ contract DeployOpenRank is Script {
             selector: IReservationRegistry.addImage.selector
         });
 
-        uint256 fee = reservationRegistry.getReservationTransferAmount(IReservationRegistry.ResourceConfigType.CPU);
+        // uint256 fee = reservationRegistry.getReservationTransferAmount(IReservationRegistry.ResourceConfigType.CPU);
         IERC20 paymentToken = reservationRegistry.paymentToken();
-        paymentToken.approve(address(reservationRegistry), fee);
-        uint256 reservationId = reservationRegistry.reserve(address(orManager), IReservationRegistry.ResourceConfigType.CPU, fee);
-        bytes[] memory imageBytes = new bytes[](0);
-        reservationRegistry.addImage(reservationId, imageBytes);
+        // paymentToken.approve(address(reservationRegistry), fee);
+        // uint256 reservationId = reservationRegistry.reserve(address(orManager), IReservationRegistry.ResourceConfigType.CPU, fee);
+        // bytes[] memory imageBytes = new bytes[](0);
+        // uint32 imageId = reservationRegistry.addImage(reservationId, imageBytes);
+        // orManager.setImageId(imageId);
+
+        paymentToken.transfer(address(orManager), 100000000);
 
         console.log("address(orManager): ", address(orManager));
         console.log("address(reexecutionEndpoint): ", address(reexecutionEndpoint));
