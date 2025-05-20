@@ -11,3 +11,17 @@
 
 To shutdown, use:
 ./scripts/shutdown.sh
+
+### Openrank nodes
+Install:
+```bash
+cargo install openrank-sdk --path ./sdk
+cargo install openrank-node --path ./node
+```
+
+Run:
+```bash
+Node: openrank-node
+Challanger: openrank-node --challanger
+SDK command: openrank-sdk meta-compute-request ./datasets/trust/ ./datasets/seed/
+```
