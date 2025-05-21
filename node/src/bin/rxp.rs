@@ -31,9 +31,14 @@ use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::info;
 
-use performer_service_server::{PerformerService, PerformerServiceServer};
+use proto::performer_service_server::{PerformerService, PerformerServiceServer};
+use proto::*;
 
-tonic::include_proto!("rxp");
+mod proto {
+    tonic::include_proto!("rxp");
+    pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
+        tonic::include_file_descriptor_set!("rxp_descriptor");
+}
 
 #[macro_use]
 extern crate dotenv_codegen;
@@ -338,10 +343,16 @@ async fn main() {
 
     info!("Running the rxp node on port {}..", service_port);
 
-    let service = RxpService::new(wallet, rpc_client, s3_client, manager_address);
-    let addr = format!("[::1]:{}", service_port).parse().unwrap();
+    let reflection_service = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
+        .build()
+        .unwrap();
+
+    let rxp_service = RxpService::new(wallet, rpc_client, s3_client, manager_address);
+    let addr = format!("0.0.0.0:{}", service_port).parse().unwrap();
     Server::builder()
-        .add_service(PerformerServiceServer::new(service))
+        .add_service(reflection_service)
+        .add_service(PerformerServiceServer::new(rxp_service))
         .serve(addr)
         .await
         .unwrap();
