@@ -2,7 +2,9 @@ use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
     MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
-use crate::sol::ReexecutionEndpoint::{ReexecutionEndpointInstance, ReexecutionRequestCreated};
+use crate::sol::ReexecutionEndpoint::{
+    OperatorResponse, ReexecutionEndpointInstance, ReexecutionRequestCreated,
+};
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
 use alloy::primitives::Uint;
@@ -318,12 +320,19 @@ pub async fn run<P: Provider, PW: Provider>(
         .watch()
         .await
         .unwrap();
+    let operator_response_filter = rxp_contract
+        .OperatorResponse_filter()
+        .from_block(BlockNumberOrTag::Latest)
+        .watch()
+        .await
+        .unwrap();
 
     // Meta streams
     let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
     let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
     let mut meta_challenge_stream = meta_challenge_filter.into_stream();
     let mut reexecution_request_stream = reexecution_request_filter.into_stream();
+    let mut operator_response_stream = operator_response_filter.into_stream();
 
     let mut meta_compute_request_map = HashMap::new();
     let mut meta_challanged_jobs_map = HashMap::new();
@@ -381,6 +390,17 @@ pub async fn run<P: Provider, PW: Provider>(
                         request.requestIndex,
                         request.avs,
                         request.reservationID,
+                    );
+                    debug!("{:?}", log);
+                }
+            }
+            operator_response_event = operator_response_stream.next() => {
+                if let Some(res) = operator_response_event {
+                    let (response, log): (OperatorResponse, Log) = res.unwrap();
+                    info!(
+                        "OperatorResponse: operator({:#}) response({:#})",
+                        response.operator,
+                        response.response
                     );
                     debug!("{:?}", log);
                 }

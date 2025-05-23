@@ -1,5 +1,6 @@
 /target
 .DS_Store
+temp.log
 
 # Compiler files
 contracts/cache/

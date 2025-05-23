@@ -81,3 +81,12 @@ $REGISTER_BIN_PATH \
   --bls-private-key "$BLS_PRIVATE_KEY" \
   --socket "$SOCKET" \
   --strategy-address "$STRATEGY_ADDRESS"
+
+echo "Current block number:"
+cast block-number --rpc-url "$RPC_URL"
+
+echo "Fast-forward 12000 blocks"
+cast rpc anvil_mine 11 --rpc-url "$RPC_URL"
+
+echo "Current block number:"
+cast block-number --rpc-url "$RPC_URL"

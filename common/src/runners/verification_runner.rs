@@ -127,6 +127,27 @@ impl VerificationRunner {
         return Ok(is_root_equal && is_converged);
     }
 
+    /// Get the list of completed assignments for certain domain
+    pub fn verify_scores(&mut self, domain: Domain, compute_id: Hash) -> Result<bool, Error> {
+        info!("COMPLETED_ASSIGNMENT_SEARCH: {}", domain.to_hash());
+
+        self.create_compute_tree(domain.clone(), compute_id.clone())?;
+        let (res_lt_root, res_compute_root) =
+            self.get_root_hashes(domain.clone(), compute_id.clone())?;
+        info!(
+            "LT_ROOT: {}, COMPUTE_ROOT: {}",
+            res_lt_root, res_compute_root
+        );
+        let is_converged = self.compute_verification(domain.clone(), compute_id.clone())?;
+        info!(
+            "COMPLETED_ASSIGNMENT, DOMAIN: {}, is_converged: {}",
+            domain.to_hash(),
+            is_converged,
+        );
+
+        return Ok(is_converged);
+    }
+
     /// Build the compute tree of certain assignment, for certain domain.
     fn create_compute_tree(&mut self, domain: Domain, compute_id: Hash) -> Result<(), Error> {
         info!("CREATE_COMPUTE_TREE: {}", domain.to_hash());

@@ -35,7 +35,7 @@ use proto::performer_service_server::{PerformerService, PerformerServiceServer};
 use proto::*;
 
 mod proto {
-    tonic::include_proto!("rxp");
+    tonic::include_proto!("eigenlayer.avs.v1.performer");
     pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
         tonic::include_file_descriptor_set!("rxp_descriptor");
 }
@@ -269,7 +269,9 @@ impl PerformerService for RxpService {
         &self,
         _: Request<HealthCheckRequest>,
     ) -> Result<Response<HealthCheckResponse>, Status> {
-        Ok(Response::new(HealthCheckResponse { status: 1 }))
+        Ok(Response::new(HealthCheckResponse {
+            status: PerformerStatus::ReadyForTask.into(),
+        }))
     }
 
     async fn start_sync(
@@ -283,26 +285,28 @@ impl PerformerService for RxpService {
         &self,
         request: Request<TaskRequest>,
     ) -> Result<Response<TaskResponse>, Status> {
-        let provider_http = ProviderBuilder::new()
-            .wallet(self.wallet.clone())
-            .on_client(self.rpc_client.clone());
-        let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
         let task_request = request.into_inner();
-        type Input = (SolUint<256>, SolUint<32>);
-        let (compute_id, job_id) = Input::abi_decode(task_request.payload.as_slice()).unwrap();
-        let res = run(
-            manager_contract,
-            self.s3_client.clone(),
-            OpenRankExeInput::new(compute_id, job_id),
-        )
-        .await
-        .unwrap();
 
-        let mut encoded_res = Vec::new();
-        res.encode(&mut encoded_res);
+        // let provider_http = ProviderBuilder::new()
+        //     .wallet(self.wallet.clone())
+        //     .on_client(self.rpc_client.clone());
+        // let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
+        // type Input = (SolUint<256>, SolUint<32>);
+        // let (compute_id, job_id) = Input::abi_decode(task_request.payload.as_slice()).unwrap();
+        // let res = run(
+        //     manager_contract,
+        //     self.s3_client.clone(),
+        //     OpenRankExeInput::new(compute_id, job_id),
+        // )
+        // .await
+        // .unwrap();
+
+        // let mut encoded_res = Vec::new();
+        // res.encode(&mut encoded_res);
+
         Ok(Response::new(TaskResponse {
             task_id: task_request.task_id,
-            result: encoded_res,
+            result: Vec::new(),
         }))
     }
 }

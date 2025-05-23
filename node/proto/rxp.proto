@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package rxp;
+package eigenlayer.avs.v1.performer;
 
 option go_package = "github.com/Layr-Labs/avs-apis/pkg/gen/protos/v1/performer";
 

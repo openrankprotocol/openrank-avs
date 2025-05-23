@@ -1,7 +1,10 @@
 mod actions;
 mod sol;
 
-use actions::{download_meta, download_scores, upload_meta, upload_seed, upload_trust};
+use actions::{
+    compute_local, download_meta, download_scores, upload_meta, upload_seed, upload_trust,
+    verify_local,
+};
 use alloy::hex::FromHex;
 use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::ProviderBuilder;
@@ -12,11 +15,13 @@ use alloy::transports::http::reqwest::Url;
 use aws_config::from_env;
 use aws_sdk_s3::{Client, Error as AwsError};
 use clap::{Parser, Subcommand};
+use csv::StringRecord;
 use dotenv::dotenv;
+use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use serde::{Deserialize, Serialize};
 use sol::OpenRankManager;
 use std::collections::HashMap;
-use std::fs::read_dir;
+use std::fs::{read_dir, read_to_string, File};
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
@@ -28,6 +33,19 @@ enum Method {
     MetaComputeRequest {
         trust_folder_path: String,
         seed_folder_path: String,
+    },
+    Temp {
+        path: String,
+    },
+    ComputeLocal {
+        trust_path: String,
+        seed_path: String,
+        output_path: Option<String>,
+    },
+    VerifyLocal {
+        trust_path: String,
+        seed_path: String,
+        scores_path: String,
     },
 }
 
@@ -144,6 +162,106 @@ async fn main() -> Result<(), AwsError> {
                 .unwrap();
             println!("Meta Job ID: {}", meta_id);
             println!("Tx Hash: {}", res.watch().await.unwrap());
+        }
+        Method::Temp { path } => {
+            let mut biggest = 0;
+            for line in read_to_string(path).unwrap().lines() {
+                let num: u32 = line.parse().unwrap();
+                if num > biggest {
+                    biggest = num;
+                }
+            }
+            println!("{}", biggest);
+        }
+        Method::ComputeLocal {
+            trust_path,
+            seed_path,
+            output_path,
+        } => {
+            let f = File::open(trust_path).unwrap();
+            let mut rdr = csv::Reader::from_reader(f);
+            let mut trust_entries = Vec::new();
+            for result in rdr.records() {
+                let record: StringRecord = result.unwrap();
+                let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+                let trust_entry = TrustEntry::new(from, to, value);
+                trust_entries.push(trust_entry);
+            }
+
+            // Read CSV, to get a list of `ScoreEntry`
+            let f = File::open(seed_path).unwrap();
+            let mut rdr = csv::Reader::from_reader(f);
+            let mut seed_entries = Vec::new();
+            for result in rdr.records() {
+                let record: StringRecord = result.unwrap();
+                let (i, value): (String, f32) = record.deserialize(None).unwrap();
+                let score_entry = ScoreEntry::new(i, value);
+                seed_entries.push(score_entry);
+            }
+
+            let scores_vec = compute_local(&trust_entries, &seed_entries).await.unwrap();
+
+            if let Some(output_path) = output_path {
+                let scores_file = File::create(output_path).unwrap();
+                let mut wtr = csv::Writer::from_writer(scores_file);
+                wtr.write_record(&["i", "v"]).unwrap();
+                for x in scores_vec {
+                    wtr.write_record(&[x.id(), x.value().to_string().as_str()])
+                        .unwrap();
+                }
+            } else {
+                let scores_wrt = Vec::new();
+                let mut wtr = csv::Writer::from_writer(scores_wrt);
+                wtr.write_record(&["i", "v"]).unwrap();
+                for x in scores_vec {
+                    wtr.write_record(&[x.id(), x.value().to_string().as_str()])
+                        .unwrap();
+                }
+                let res = wtr.into_inner().unwrap();
+                println!("{:?}", String::from_utf8(res));
+            }
+        }
+        Method::VerifyLocal {
+            trust_path,
+            seed_path,
+            scores_path,
+        } => {
+            let f = File::open(trust_path).unwrap();
+            let mut rdr = csv::Reader::from_reader(f);
+            let mut trust_entries = Vec::new();
+            for result in rdr.records() {
+                let record: StringRecord = result.unwrap();
+                let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
+                let trust_entry = TrustEntry::new(from, to, value);
+                trust_entries.push(trust_entry);
+            }
+
+            // Read CSV, to get a list of `ScoreEntry`
+            let f = File::open(seed_path).unwrap();
+            let mut rdr = csv::Reader::from_reader(f);
+            let mut seed_entries = Vec::new();
+            for result in rdr.records() {
+                let record: StringRecord = result.unwrap();
+                let (i, value): (String, f32) = record.deserialize(None).unwrap();
+                let score_entry = ScoreEntry::new(i, value);
+                seed_entries.push(score_entry);
+            }
+
+            // Read CSV, to get a list of `ScoreEntry`
+            let f = File::open(scores_path).unwrap();
+            let mut rdr = csv::Reader::from_reader(f);
+            let mut scores_entries = Vec::new();
+            for result in rdr.records() {
+                let record: StringRecord = result.unwrap();
+                let (i, value): (String, f32) = record.deserialize(None).unwrap();
+                let score_entry = ScoreEntry::new(i, value);
+                scores_entries.push(score_entry);
+            }
+
+            let res = verify_local(&trust_entries, &seed_entries, &scores_entries)
+                .await
+                .unwrap();
+            println!("Verification result: {}", res);
         }
     };
 
