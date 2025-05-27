@@ -7,12 +7,13 @@ use crate::sol::ReexecutionEndpoint::{
 };
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
-use alloy::primitives::Uint;
+use alloy::primitives::{Bytes, Uint};
 use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use aws_sdk_s3::Client;
 use csv::StringRecord;
 use futures_util::StreamExt;
+use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
@@ -41,6 +42,30 @@ struct JobResult {
     commitment: String,
 }
 
+#[derive(Serialize, Deserialize)]
+struct EigenDaJobDescription {
+    neighbour_commitments: Vec<String>,
+    trust_data: Vec<u8>,
+    seed_data: Vec<u8>,
+    scores_data: Vec<u8>,
+}
+
+impl EigenDaJobDescription {
+    pub fn new(
+        neighbour_commitments: Vec<String>,
+        trust_data: Vec<u8>,
+        seed_data: Vec<u8>,
+        scores_data: Vec<u8>,
+    ) -> Self {
+        Self {
+            neighbour_commitments,
+            trust_data,
+            seed_data,
+            scores_data,
+        }
+    }
+}
+
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
     bucket_name: &str,
@@ -67,6 +92,7 @@ async fn handle_meta_compute_result<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
     s3_client: &Client,
+    eigenda_client: &EigenDAProxyClient,
     bucket_name: &str,
     meta_compute_res: MetaComputeResultEvent,
     log: Log,
@@ -247,15 +273,16 @@ async fn handle_meta_compute_result<PH: Provider>(
             sub_job_failed = i;
             break;
         }
-        commitments.push(Hash::from_slice(
-            hex::decode(compute_res.commitment.clone())
-                .unwrap()
-                .as_slice(),
-        ));
+        commitments.push(compute_res.commitment.clone());
     }
 
-    let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments)
-        .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
+    let commitment_tree = DenseMerkleTree::<Keccak256>::new(
+        commitments
+            .iter()
+            .map(|x| Hash::from_slice(hex::decode(x).unwrap().as_slice()))
+            .collect(),
+    )
+    .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
     let meta_commitment = commitment_tree
         .root()
         .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
@@ -269,9 +296,33 @@ async fn handle_meta_compute_result<PH: Provider>(
     info!("Challenge window open: {}", challenge_window_open);
 
     if !global_result && challenge_window_open {
+        info!("Posting input data on EigenDA");
+        let trust_data = std::fs::read(&format!(
+            "./trust/{}",
+            job_description[sub_job_failed].trust_id
+        ))
+        .unwrap();
+        let seed_data = std::fs::read(&format!(
+            "./seed/{}",
+            job_description[sub_job_failed].seed_id
+        ))
+        .unwrap();
+        let scores_data = std::fs::read(&format!(
+            "./scores/{}",
+            meta_result[sub_job_failed].scores_id
+        ))
+        .unwrap();
+        let res = EigenDaJobDescription::new(commitments, trust_data, seed_data, scores_data);
+        let data = serde_json::to_vec(&res).unwrap();
+        let certificate = eigenda_client.put_meta(data).await;
+
         info!("Submitting challenge. Calling 'metaSubmitChallenge'");
         let res = contract
-            .submitMetaChallenge(meta_compute_res.computeId, sub_job_failed as u32)
+            .submitMetaChallenge(
+                meta_compute_res.computeId,
+                sub_job_failed as u32,
+                Bytes::from(certificate),
+            )
             .send()
             .await;
         if let Ok(res) = res {
@@ -291,6 +342,7 @@ pub async fn run<P: Provider, PW: Provider>(
     rxp_contract: ReexecutionEndpointInstance<(), PW>,
     provider: P,
     s3_client: Client,
+    eigenda_client: EigenDAProxyClient,
     bucket_name: &str,
 ) {
     let challenge_window = manager_contract.CHALLENGE_WINDOW().call().await.unwrap();
@@ -360,6 +412,7 @@ pub async fn run<P: Provider, PW: Provider>(
                         &manager_contract,
                         &provider,
                         &s3_client,
+                        &eigenda_client,
                         bucket_name,
                         compute_res,
                         log,

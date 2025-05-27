@@ -17,7 +17,9 @@ contract DeployOpenRank is Script {
     DeployRxp_Local public rxpDeployer;
     OpenRankManager public orManager;
     DeployEigenLayerCore.EigenLayerDeployment coreDeployment;
+    DeployEigenLayerCore.EigenLayerConfig coreConfig;
     DeployRxp_Local.RXPDeployment rxpDeployment;
+    DeployRxp_Local.RXPConfig rxpConfig;
 
     address initialOwner;
 
@@ -26,21 +28,42 @@ contract DeployOpenRank is Script {
         rxpDeployer = new DeployRxp_Local();
         initialOwner = msg.sender;
 
-        _deployCore();
-        _deployRxp();
+        _deployCore(true, initialOwner);
+        _deployRxp(true, initialOwner);
 
         vm.startBroadcast(initialOwner);
         _deployOrManager();
         vm.stopBroadcast();
     }
 
-    function _deployCore() internal {
-        string memory configFile = "deploy_eigenlayer_core.config.json";
-        coreDeployment = coreDeployer.run(configFile, true);
+    function testRun(address sender) public {
+        coreDeployer = new DeployEigenLayerCore();
+        rxpDeployer = new DeployRxp_Local();
+        initialOwner = sender;
+
+        _deployCore(false, initialOwner);
+        _deployRxp(false, initialOwner);
+
+        vm.startPrank(sender);
+        _deployOrManager();
+        vm.stopPrank();
     }
 
-    function _deployRxp() internal {
-        rxpDeployment = rxpDeployer.run(true);
+    function _deployCore(bool broadcast, address prankAddress) internal {
+        string memory configFile = "deploy_eigenlayer_core.config.json";
+        string memory eigenlayerConfigPath = string.concat("script/local/config/", configFile);
+        coreConfig = coreDeployer._readEigenLayerConfigJSON(eigenlayerConfigPath);
+        coreDeployment = coreDeployer.run(coreConfig, broadcast, prankAddress);
+    }
+
+    function _deployRxp(bool broadcast, address prankAddress) internal {
+        string memory rxpConfigPath = string.concat("script/", "local", "/config/deploy_rxp_contracts.config.json");
+        string memory eigenlayerContractsPath =
+            string.concat("script/", "local", "/output/deploy_eigenlayer_core_output.json");
+        string memory outputPath = string.concat("script/", "local", "/output/deploy_rxp_contracts_output.json");
+
+        rxpConfig = rxpDeployer._readRxpConfigJSON(rxpConfigPath);
+        rxpDeployment = rxpDeployer.run(rxpConfig, coreDeployment, broadcast, prankAddress);
     }
 
     function _deployOrManager() internal {

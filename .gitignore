@@ -10,6 +10,7 @@ contracts/out/
 !/broadcast
 contracts/broadcast/*/31337/
 contracts/broadcast/**/dry-run/
+cache
 
 # Docs
 contracts/docs/

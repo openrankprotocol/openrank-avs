@@ -18,10 +18,8 @@ contract OpenRankManagerTest is Test {
         openRankDeployer = new DeployOpenRank();
 
         initialOwner = vm.envAddress("ADDRESS");
-
-        vm.startPrank(initialOwner);
-        openRankDeployer.run();
-        vm.stopPrank();
+        console.log("initialOwner: ", initialOwner);
+        openRankDeployer.testRun(initialOwner);
     }
 
     function testMetaChallenge() public {
@@ -41,7 +39,7 @@ contract OpenRankManagerTest is Test {
         bytes memory inputData = abi.encode(jobId, 0);
         emit IReexecutionEndpoint.ReexecutionRequestCreated(0, address(orManager), 0, 0, hex"", bytes32(0), inputData, 1);
 
-        orManager.submitMetaChallenge(jobId, 0);
+        orManager.submitMetaChallenge(jobId, 0, hex"");
 
         vm.stopPrank();
     }

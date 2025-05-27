@@ -1,18 +1,14 @@
 use alloy::hex::{self, FromHex, ToHexExt};
 use alloy::primitives::{Address, FixedBytes, Uint};
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy::providers::Provider;
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
 use alloy::transports::http::reqwest::Url;
-use alloy_rlp::{Encodable, RlpEncodable};
-use alloy_sol_types::{sol_data::Uint as SolUint, SolType};
-use aws_config::{BehaviorVersion, SdkConfig};
-use aws_credential_types::Credentials;
-use aws_sdk_s3::config::SharedCredentialsProvider;
-use aws_sdk_s3::Client;
+use alloy_rlp::RlpEncodable;
 use csv::StringRecord;
 use dotenv::dotenv;
+use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
@@ -78,7 +74,7 @@ pub struct OpenRankExeResult {
 }
 
 pub async fn download_meta<T: DeserializeOwned>(
-    client: &Client,
+    eigenda_client: &EigenDAProxyClient,
     meta_id: String,
 ) -> Result<T, NodeError> {
     let res = client
@@ -100,7 +96,7 @@ pub async fn download_meta<T: DeserializeOwned>(
 
 pub async fn run<P: Provider>(
     contract: OpenRankManagerInstance<(), P>,
-    s3_client: Client,
+    eigenda_client: EigenDAProxyClient,
     input: OpenRankExeInput,
 ) -> Result<OpenRankExeResult, NodeError> {
     let res = contract
@@ -243,7 +239,7 @@ pub async fn run<P: Provider>(
 struct RxpService {
     wallet: PrivateKeySigner,
     rpc_client: RpcClient,
-    s3_client: Client,
+    eigenda_client: EigenDAProxyClient,
     manager_address: Address,
 }
 
@@ -251,13 +247,13 @@ impl RxpService {
     pub fn new(
         wallet: PrivateKeySigner,
         rpc_client: RpcClient,
-        s3_client: Client,
+        eigenda_client: EigenDAProxyClient,
         manager_address: Address,
     ) -> Self {
         Self {
             wallet,
             rpc_client,
-            s3_client,
+            eigenda_client,
             manager_address,
         }
     }
@@ -317,23 +313,11 @@ async fn main() {
     dotenv().ok();
     setup_tracing();
 
+    let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
     let service_port = dotenv!("SERVICE_PORT");
     let rpc_url = dotenv!("CHAIN_RPC_URL");
     let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
     let mnemonic = dotenv!("MNEMONIC");
-    let creds = Credentials::new(
-        dotenv!("AWS_ACCESS_KEY_ID"),
-        dotenv!("AWS_SECRET_ACCESS_KEY"),
-        None,
-        None,
-        "openrank-rxp",
-    );
-    let provider = SharedCredentialsProvider::new(creds);
-    let config = SdkConfig::builder()
-        .credentials_provider(provider)
-        .behavior_version(BehaviorVersion::latest())
-        .build();
-    let s3_client = Client::new(&config);
 
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
@@ -344,6 +328,7 @@ async fn main() {
 
     let rpc_client = RpcClient::new_http(Url::parse(&rpc_url).unwrap());
     let manager_address = Address::from_hex(manager_address).unwrap();
+    let eigenda_client = EigenDAProxyClient::new(eigenda_url);
 
     info!("Running the rxp node on port {}..", service_port);
 
@@ -352,7 +337,7 @@ async fn main() {
         .build()
         .unwrap();
 
-    let rxp_service = RxpService::new(wallet, rpc_client, s3_client, manager_address);
+    let rxp_service = RxpService::new(wallet, rpc_client, eigenda_client, manager_address);
     let addr = format!("0.0.0.0:{}", service_port).parse().unwrap();
     Server::builder()
         .add_service(reflection_service)

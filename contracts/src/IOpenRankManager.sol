@@ -29,13 +29,18 @@ interface IOpenRankManager {
         address challenger;
         uint256 computeId;
         uint32 subJobId;
+        bytes certificate;
         uint256 timestamp;
         uint256 requestIndex;
     }
 
     event MetaComputeRequestEvent(uint256 indexed computeId, bytes32 jobDescriptionId);
     event MetaComputeResultEvent(uint256 indexed computeId, bytes32 commitment, bytes32 resultsId);
-    event MetaChallengeEvent(uint256 indexed computeId, uint32 subJobId);
+    event MetaChallengeEvent(
+        uint256 indexed computeId,
+        uint32 subJobId,
+        bytes certificate
+    );
 
     function setImageId(
         uint32 _imageId
@@ -48,7 +53,11 @@ interface IOpenRankManager {
         bytes32 metaCommitment,
         bytes32 resultsId
     ) external returns (bool);
-    function submitMetaChallenge(uint256 computeId, uint32 subJobId) external returns (bool);
+    function submitMetaChallenge(
+        uint256 computeId,
+        uint32 subJobId,
+        bytes memory certificate
+    ) external returns (bool);
     function isAllowlistedComputer(
         address computer
     ) external returns (bool);

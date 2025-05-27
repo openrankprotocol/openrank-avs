@@ -17,11 +17,13 @@ use aws_sdk_s3::{Client, Error as AwsError};
 use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
+use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use serde::{Deserialize, Serialize};
 use sol::OpenRankManager;
 use std::collections::HashMap;
-use std::fs::{read_dir, read_to_string, File};
+use std::fs::{read_dir, File};
+use std::io::Write;
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
@@ -34,9 +36,6 @@ enum Method {
         trust_folder_path: String,
         seed_folder_path: String,
     },
-    Temp {
-        path: String,
-    },
     ComputeLocal {
         trust_path: String,
         seed_path: String,
@@ -46,6 +45,14 @@ enum Method {
         trust_path: String,
         seed_path: String,
         scores_path: String,
+    },
+    UploadTrust {
+        path: String,
+        certs_path: String,
+    },
+    DownloadTrust {
+        path: String,
+        certs_path: String,
     },
 }
 
@@ -86,6 +93,7 @@ async fn main() -> Result<(), AwsError> {
     dotenv().ok();
     let cli = Args::parse();
 
+    let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
@@ -162,16 +170,6 @@ async fn main() -> Result<(), AwsError> {
                 .unwrap();
             println!("Meta Job ID: {}", meta_id);
             println!("Tx Hash: {}", res.watch().await.unwrap());
-        }
-        Method::Temp { path } => {
-            let mut biggest = 0;
-            for line in read_to_string(path).unwrap().lines() {
-                let num: u32 = line.parse().unwrap();
-                if num > biggest {
-                    biggest = num;
-                }
-            }
-            println!("{}", biggest);
         }
         Method::ComputeLocal {
             trust_path,
@@ -262,6 +260,32 @@ async fn main() -> Result<(), AwsError> {
                 .await
                 .unwrap();
             println!("Verification result: {}", res);
+        }
+        Method::UploadTrust { path, certs_path } => {
+            {
+                let f = File::open(path.clone()).unwrap();
+                let mut rdr = csv::Reader::from_reader(f);
+                for result in rdr.records() {
+                    let record: StringRecord = result.unwrap();
+                    let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
+                }
+            }
+            let data = std::fs::read(&path).unwrap(); // Read the contents of the file into a vector of bytes
+
+            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
+            let res = eigenda_client.put_meta(data).await;
+
+            let mut file = File::create(certs_path).unwrap();
+            file.write(&res).unwrap();
+        }
+        Method::DownloadTrust { path, certs_path } => {
+            let data = std::fs::read(&certs_path).unwrap();
+
+            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
+
+            let res = eigenda_client.put_meta(data).await;
+            let mut file = File::create(path).unwrap();
+            file.write(&res).unwrap();
         }
     };
 

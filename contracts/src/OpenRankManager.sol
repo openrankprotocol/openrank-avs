@@ -85,7 +85,11 @@ contract OpenRankManager is OpenRankManagerStorage {
         return true;
     }
 
-    function submitMetaChallenge(uint256 computeId, uint32 subJobId) external returns (bool) {
+    function submitMetaChallenge(
+        uint256 computeId,
+        uint32 subJobId,
+        bytes memory certificate
+    ) external returns (bool) {
         require(allowlistedChallengers[msg.sender], CallerNotWhitelisted());
         require(metaComputeRequests[computeId].id != 0, ComputeRequestNotFound());
         require(metaComputeResults[computeId].computeId != 0, ComputeResultNotFound());
@@ -105,12 +109,13 @@ contract OpenRankManager is OpenRankManagerStorage {
             challenger: msg.sender,
             computeId: computeId,
             subJobId: subJobId,
+            certificate: certificate,
             timestamp: block.timestamp,
             requestIndex: requestIndex
         });
         metaChallenges[computeId] = challenge;
 
-        emit MetaChallengeEvent(computeId, subJobId);
+        emit MetaChallengeEvent(computeId, subJobId, certificate);
         return true;
     }
 

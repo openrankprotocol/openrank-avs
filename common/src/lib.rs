@@ -1,4 +1,5 @@
 pub mod algos;
+pub mod eigenda;
 pub mod logs;
 pub mod merkle;
 pub mod runners;

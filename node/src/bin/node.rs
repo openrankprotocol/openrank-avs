@@ -9,6 +9,7 @@ use aws_config::from_env;
 use aws_sdk_s3::Client;
 use clap::Parser;
 use dotenv::dotenv;
+use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_node::sol::{OpenRankManager, ReexecutionEndpoint};
 use openrank_node::{challenger, computer};
@@ -30,6 +31,7 @@ async fn main() {
 
     let cli = Args::parse();
 
+    let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let wss_url = std::env::var("CHAIN_WSS_URL").expect("CHAIN_WSS_URL must be set.");
     let manager_address =
@@ -61,12 +63,15 @@ async fn main() {
     let rxp_address = Address::from_hex(rxp_address).unwrap();
     let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_wss);
 
+    let eigenda_client = EigenDAProxyClient::new(eigenda_url);
+
     if cli.challenger {
         challenger::run(
             manager_contract,
             rxp_contract,
             provider_http,
             client,
+            eigenda_client,
             BUCKET_NAME,
         )
         .await;
