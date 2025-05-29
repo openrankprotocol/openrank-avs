@@ -11,3 +11,10 @@ services:
         networks:
             - avsnet
         restart: unless-stopped
+        build:
+            dockerfile: node/Dockerfile
+    anvil:
+        ports:
+            - "8545:8545"
+        build:
+            dockerfile: anvil/Dockerfile

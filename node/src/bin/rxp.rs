@@ -1,11 +1,13 @@
-use alloy::hex::{self, FromHex, ToHexExt};
+use alloy::hex::{self, FromHex};
 use alloy::primitives::{Address, FixedBytes, Uint};
-use alloy::providers::Provider;
+use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
+use alloy::sol_types::sol_data::Uint as SolUint;
+use alloy::sol_types::SolType;
 use alloy::transports::http::reqwest::Url;
-use alloy_rlp::RlpEncodable;
+use alloy_rlp::{Encodable, RlpEncodable};
 use csv::StringRecord;
 use dotenv::dotenv;
 use openrank_common::eigenda::EigenDAProxyClient;
@@ -15,14 +17,11 @@ use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use openrank_common::Domain;
-use openrank_node::{
-    error::Error as NodeError,
-    sol::OpenRankManager::{self, OpenRankManagerInstance},
-};
+use openrank_node::sol::OpenRankManager;
+use openrank_node::{error::Error as NodeError, sol::OpenRankManager::OpenRankManagerInstance};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
-use std::io::Write;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 use tracing::info;
@@ -38,8 +37,6 @@ mod proto {
 
 #[macro_use]
 extern crate dotenv_codegen;
-
-const BUCKET_NAME: &str = "openrank-data-dev";
 
 #[derive(Serialize, Deserialize, Clone)]
 struct JobDescription {
@@ -73,24 +70,20 @@ pub struct OpenRankExeResult {
     sub_job_commitment: FixedBytes<32>,
 }
 
+#[derive(Serialize, Deserialize)]
+struct EigenDaJobDescription {
+    neighbour_commitments: Vec<String>,
+    trust_data: Vec<u8>,
+    seed_data: Vec<u8>,
+    scores_data: Vec<u8>,
+}
+
 pub async fn download_meta<T: DeserializeOwned>(
     eigenda_client: &EigenDAProxyClient,
-    meta_id: String,
+    certificate: Vec<u8>,
 ) -> Result<T, NodeError> {
-    let res = client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("meta/{}", meta_id))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let res_bytes = res
-        .body
-        .collect()
-        .await
-        .map_err(NodeError::ByteStreamError)?;
-    let meta: T =
-        serde_json::from_slice(res_bytes.to_vec().as_slice()).map_err(NodeError::SerdeError)?;
+    let res_bytes = eigenda_client.get_meta(certificate).await;
+    let meta: T = serde_json::from_slice(res_bytes.as_slice()).map_err(NodeError::SerdeError)?;
     Ok(meta)
 }
 
@@ -99,69 +92,17 @@ pub async fn run<P: Provider>(
     eigenda_client: EigenDAProxyClient,
     input: OpenRankExeInput,
 ) -> Result<OpenRankExeResult, NodeError> {
-    let res = contract
-        .metaComputeResults(input.compute_id)
+    let challenge = contract
+        .metaChallenges(input.compute_id)
         .call()
         .await
         .map_err(|e| NodeError::TxError(format!("{e:}")))?;
-    let meta_result: Vec<JobResult> = download_meta(&s3_client, res.resultsId.encode_hex()).await?;
-    let sub_job_result = meta_result[input.job_id as usize].clone();
+    let meta_result: EigenDaJobDescription =
+        download_meta(&eigenda_client, challenge.certificate.to_vec()).await?;
 
-    let compute_request = contract
-        .metaComputeRequests(input.compute_id)
-        .call()
-        .await
-        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
-
-    let meta_request: Vec<JobDescription> =
-        download_meta(&s3_client, compute_request.jobDescriptionId.encode_hex()).await?;
-    let sub_job_description = meta_request[input.job_id as usize].clone();
-
-    let mut trust_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("trust/{}", sub_job_description.trust_id))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let mut seed_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("seed/{}", sub_job_description.seed_id))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let mut scores_res = s3_client
-        .get_object()
-        .bucket(BUCKET_NAME)
-        .key(format!("scores/{}", sub_job_result.scores_id))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-
-    let mut trust_vec = Vec::new();
-    let mut seed_vec = Vec::new();
-    let mut scores_vec = Vec::new();
-
-    while let Some(bytes) = trust_res.body.next().await {
-        trust_vec
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to vec: {e:}")))?;
-    }
-    while let Some(bytes) = seed_res.body.next().await {
-        seed_vec
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to vec: {e:}")))?;
-    }
-    while let Some(bytes) = scores_res.body.next().await {
-        scores_vec
-            .write(&bytes.unwrap())
-            .map_err(|e| NodeError::FileError(format!("Failed to write to vec: {e:}")))?;
-    }
-
-    let mut trust_rdr = csv::Reader::from_reader(trust_vec.as_slice());
-    let mut seed_rdr = csv::Reader::from_reader(seed_vec.as_slice());
-    let mut scores_rdr = csv::Reader::from_reader(scores_vec.as_slice());
+    let mut trust_rdr = csv::Reader::from_reader(meta_result.trust_data.as_slice());
+    let mut seed_rdr = csv::Reader::from_reader(meta_result.seed_data.as_slice());
+    let mut scores_rdr = csv::Reader::from_reader(meta_result.scores_data.as_slice());
 
     let mut trust_entries = Vec::new();
     for result in trust_rdr.records() {
@@ -197,29 +138,23 @@ pub async fn run<P: Provider>(
     runner
         .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
         .map_err(NodeError::VerificationRunnerError)?;
-    runner.update_commitment(
-        Hash::default(),
-        Hash::from_slice(
-            hex::decode(sub_job_result.commitment.clone())
-                .unwrap()
-                .as_slice(),
-        ),
-    );
     runner
         .update_scores(mock_domain.clone(), Hash::default(), scores_entries)
         .map_err(NodeError::VerificationRunnerError)?;
     let result = runner
-        .verify_job(mock_domain.clone(), Hash::default())
+        .verify_scores(mock_domain.clone(), Hash::default())
         .map_err(NodeError::VerificationRunnerError)?;
     let (sub_job_commitment, _) = runner
         .get_root_hashes(mock_domain, Hash::default())
         .map_err(NodeError::VerificationRunnerError)?;
     info!("Core Compute verification completed. Result({})", result);
 
-    let commitments: Vec<Hash> = meta_result
+    let mut commitments: Vec<Hash> = meta_result
+        .neighbour_commitments
         .iter()
-        .map(|x| Hash::from_slice(hex::decode(x.commitment.clone()).unwrap().as_slice()))
+        .map(|x| Hash::from_slice(hex::decode(x).unwrap().as_slice()))
         .collect();
+    commitments.insert(challenge.subJobId as usize, sub_job_commitment.clone());
 
     let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments)
         .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
@@ -283,26 +218,27 @@ impl PerformerService for RxpService {
     ) -> Result<Response<TaskResponse>, Status> {
         let task_request = request.into_inner();
 
-        // let provider_http = ProviderBuilder::new()
-        //     .wallet(self.wallet.clone())
-        //     .on_client(self.rpc_client.clone());
-        // let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
-        // type Input = (SolUint<256>, SolUint<32>);
-        // let (compute_id, job_id) = Input::abi_decode(task_request.payload.as_slice()).unwrap();
-        // let res = run(
-        //     manager_contract,
-        //     self.s3_client.clone(),
-        //     OpenRankExeInput::new(compute_id, job_id),
-        // )
-        // .await
-        // .unwrap();
+        let provider_http = ProviderBuilder::new()
+            .wallet(self.wallet.clone())
+            .on_client(self.rpc_client.clone());
+        let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
+        type Input = (SolUint<256>, SolUint<32>);
+        let (compute_id, job_id) =
+            Input::abi_decode(task_request.payload.as_slice(), true).unwrap();
+        let res = run(
+            manager_contract,
+            self.eigenda_client.clone(),
+            OpenRankExeInput::new(compute_id, job_id),
+        )
+        .await
+        .unwrap();
 
-        // let mut encoded_res = Vec::new();
-        // res.encode(&mut encoded_res);
+        let mut encoded_res = Vec::new();
+        res.encode(&mut encoded_res);
 
         Ok(Response::new(TaskResponse {
             task_id: task_request.task_id,
-            result: Vec::new(),
+            result: encoded_res,
         }))
     }
 }
@@ -315,7 +251,7 @@ async fn main() {
 
     let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
     let service_port = dotenv!("SERVICE_PORT");
-    let rpc_url = dotenv!("CHAIN_RPC_URL");
+    let rpc_url = dotenv!("ETH_RPC_URL");
     let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
     let mnemonic = dotenv!("MNEMONIC");
 

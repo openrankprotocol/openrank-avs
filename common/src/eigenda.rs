@@ -3,6 +3,7 @@ use reqwest::Client;
 
 const BLOB_SIZE_BYTES: usize = 15777216;
 
+#[derive(Clone)]
 pub struct EigenDAProxyClient {
     url: String,
     client: Client,

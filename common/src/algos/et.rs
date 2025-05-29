@@ -226,36 +226,34 @@ fn iteration(
     seed: &BTreeMap<u64, f32>,
     scores: &BTreeMap<u64, f32>,
 ) -> BTreeMap<u64, f32> {
-    lt.par_iter()
-        .fold(BTreeMap::new, |mut next_scores, (from, from_map)| {
+    // Step 1-3: Compute raw contributions per node
+    let mut next_scores = lt
+        .par_iter()
+        .map(|(from, from_map)| {
             let origin_score = scores.get(from).unwrap_or(&0.0);
+            let mut partial = BTreeMap::new();
             for (to, value) in from_map.outbound_trust_scores() {
                 let score = *value * origin_score;
-                let to_score = next_scores.get(to).unwrap_or(&0.0);
-                let final_to_score = to_score + score;
-                next_scores.insert(*to, final_to_score);
+                let to_score = partial.get(to).unwrap_or(&0.0);
+                partial.insert(*to, to_score + score);
             }
-            next_scores
+            partial
         })
-        .map(|mut next_scores| {
-            // Calculate the weighted next scores of each node
-            for (i, v) in &mut next_scores {
-                let pre_trust = seed.get(i).unwrap_or(&0.0);
-                let weighted_to_score =
-                    PRE_TRUST_WEIGHT * pre_trust + (*v * (1. - PRE_TRUST_WEIGHT));
-                *v = weighted_to_score;
-            }
-            next_scores
-        })
-        .reduce(BTreeMap::new, |mut acc, next| {
-            for (i, v) in next {
-                if acc.contains_key(&i) {
-                    let val = acc.get(&i).unwrap();
-                    acc.insert(i, v + val);
-                } else {
-                    acc.insert(i, v);
+        .reduce(
+            || BTreeMap::new(),
+            |mut acc, partial| {
+                for (k, v) in partial {
+                    *acc.entry(k).or_insert(0.0) += v;
                 }
-            }
-            acc
-        })
+                acc
+            },
+        );
+
+    // Step 4: Apply pre-trust weighted normalization
+    for (i, v) in &mut next_scores {
+        let pre_trust = seed.get(i).unwrap_or(&0.0);
+        *v = PRE_TRUST_WEIGHT * pre_trust + *v * (1.0 - PRE_TRUST_WEIGHT);
+    }
+
+    next_scores
 }

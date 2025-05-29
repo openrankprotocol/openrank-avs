@@ -31,7 +31,7 @@ async fn main() {
 
     let cli = Args::parse();
 
-    let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
+    let eigenda_url = std::env::var("EIGEN_DA_PROXY_URL").expect("EIGEN_DA_PROXY_URL must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let wss_url = std::env::var("CHAIN_WSS_URL").expect("CHAIN_WSS_URL must be set.");
     let manager_address =

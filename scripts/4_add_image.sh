@@ -14,9 +14,9 @@ RXP_DIR=$CURRENT_DIR/../contracts/lib/rxp
 IMAGESTORE_BIN_PATH=/Users/filiplazovic/go/bin/imagestore
 
 IMAGE_NAME=openrank-rxp
-RPC_URL=http://127.0.0.1:8545
 IMAGESTORE_PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-DA_PROXY_URL=http://127.0.0.1:3100
+RPC_URL=http://127.0.0.1:8545
+DA_URL=http://127.0.0.1:3100
 
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then
@@ -41,7 +41,7 @@ cast send --rpc-url $RPC_URL --private-key $PRIVATE_KEY $PAYMENT_TOKEN "approve(
 
 $IMAGESTORE_BIN_PATH \
     --image-name $IMAGE_NAME \
-    --da-proxy-url $DA_PROXY_URL \
+    --da-proxy-url $DA_URL \
     --reservation-registry-address "$RESERVATION_REGISTRY_ADDR" \
     --reexecution-endpoint-address "$REEXECUTION_ENDPOINT_ADDR" \
     --private-key $IMAGESTORE_PRIVATE_KEY \
