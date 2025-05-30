@@ -35,6 +35,7 @@ DOCKER_IMAGE_ID=$(docker inspect $IMAGE_NAME | jq -r '.[0].Id')
 echo "OPENRANK_MANAGER_ADDRESS: $OPENRANK_MANAGER_ADDRESS"
 echo "RESERVATION_REGISTRY_ADDR: $RESERVATION_REGISTRY_ADDR"
 echo "REEXECUTION_ENDPOINT_ADDR: $REEXECUTION_ENDPOINT_ADDR"
+echo "IMAGE_NAME: $IMAGE_NAME"
 
 # approve the reservation registry to spend the token
 cast send --rpc-url $RPC_URL --private-key $PRIVATE_KEY $PAYMENT_TOKEN "approve(address,uint256)" "$RESERVATION_REGISTRY_ADDR" $(cast max-uint)

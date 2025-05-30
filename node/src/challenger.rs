@@ -19,6 +19,7 @@ use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use openrank_common::Domain;
+use rand::Rng;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
@@ -291,11 +292,14 @@ async fn handle_meta_compute_result<PH: Provider>(
         global_result = false;
     }
 
+    info!("Global result: Result({})", global_result);
+
     let challenge_window_open =
         (block.header.timestamp - log_block.header.timestamp) < challenge_window;
     info!("Challenge window open: {}", challenge_window_open);
 
-    if !global_result && challenge_window_open {
+    let mut rng = rand::rng();
+    if challenge_window_open && rng.random_range(0.0..1.0) <= 1.0 {
         info!("Posting input data on EigenDA");
         let trust_data = std::fs::read(&format!(
             "./trust/{}",

@@ -74,7 +74,7 @@ else
 fi
 
 echo "Building reexecution proxy"
-docker build -t reex-proxy "$RXP_DIR"
+docker build -f "$RXP_DIR/proxy/Dockerfile" -t ghcr.io/layr-labs/rxp/proxy:latest "$RXP_DIR"
 
 echo "Starting node and postgres"
 cd "$RXP_DIR"/node && docker compose -f docker-compose.yml up --build -d

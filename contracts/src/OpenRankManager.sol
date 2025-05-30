@@ -33,7 +33,7 @@ contract OpenRankManager is OpenRankManagerStorage {
         uint32 _imageId
     ) public onlyOwner {
         uint256 reservationID =
-            IReservationRegistry(reservationRegistry).getReservationIDForImageID(_imageId);
+            IReexecutionEndpoint(reexecutionEndpoint).getReservationIDForImageID(_imageId);
         IReservationRegistry.Reservation memory reservation =
             IReservationRegistry(reservationRegistry).getReservation(reservationID);
         require(reservation.avs == address(this), InvalidReservationForImageId());
@@ -98,13 +98,20 @@ contract OpenRankManager is OpenRankManagerStorage {
         require(computeDiff <= CHALLENGE_WINDOW, ChallengePeriodExpired());
 
         IReexecutionEndpoint rxp = IReexecutionEndpoint(reexecutionEndpoint);
-        (uint256 requiredFee,) = rxp.getRequestFee(uint32(block.number));
+        (uint256 requiredFee,) = rxp.getRequestFee();
         IERC20 paymentToken = rxp.paymentToken();
         paymentToken.approve(address(rxp), requiredFee);
 
         bytes memory inputData = abi.encode(computeId, subJobId);
         bytes32 taskId = keccak256(inputData);
-        uint256 requestIndex = rxp.requestReexecution(imageId, hex"", taskId, inputData);
+        IReexecutionEndpoint.ReexecutionRequestParams memory params = IReexecutionEndpoint.ReexecutionRequestParams({
+            imageID: imageId,
+            syncPayload:  hex"",
+            taskID: taskId,
+            taskPayload: inputData,
+            dataAccessCert: hex""
+        });
+        uint256 requestIndex = rxp.requestReexecution(params);
         MetaChallenge memory challenge = MetaChallenge({
             challenger: msg.sender,
             computeId: computeId,
