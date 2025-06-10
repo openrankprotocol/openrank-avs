@@ -1,6 +1,6 @@
 use alloy::hex::{self, FromHex};
 use alloy::primitives::{Address, FixedBytes, Uint};
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
@@ -82,8 +82,16 @@ pub async fn download_meta<T: DeserializeOwned>(
     eigenda_client: &EigenDAProxyClient,
     certificate: Vec<u8>,
 ) -> Result<T, NodeError> {
+    info!(
+        "Downloading metadata from EigenDA with certificate length: {}",
+        certificate.len()
+    );
     let res_bytes = eigenda_client.get_meta(certificate).await;
-    let meta: T = serde_json::from_slice(res_bytes.as_slice()).map_err(NodeError::SerdeError)?;
+    info!("Retrieved {} bytes from EigenDA", res_bytes.len());
+    let meta: T = serde_json::from_slice(res_bytes.as_slice()).map_err(|e| {
+        tracing::error!("Failed to deserialize metadata from EigenDA: {}", e);
+        NodeError::SerdeError(e)
+    })?;
     Ok(meta)
 }
 
@@ -92,11 +100,16 @@ pub async fn run<P: Provider>(
     eigenda_client: EigenDAProxyClient,
     input: OpenRankExeInput,
 ) -> Result<OpenRankExeResult, NodeError> {
+    info!("Fetching challenge for compute_id: {}", input.compute_id);
     let challenge = contract
         .metaChallenges(input.compute_id)
         .call()
         .await
-        .map_err(|e| NodeError::TxError(format!("{e:}")))?;
+        .map_err(|e| {
+            let error_msg = format!("Failed to fetch challenge from contract: {}", e);
+            tracing::error!("{}", error_msg);
+            NodeError::TxError(error_msg)
+        })?;
     let meta_result: EigenDaJobDescription =
         download_meta(&eigenda_client, challenge.certificate.to_vec()).await?;
 
@@ -223,15 +236,18 @@ impl PerformerService for RxpService {
             .on_client(self.rpc_client.clone());
         let manager_contract = OpenRankManager::new(self.manager_address, provider_http.clone());
         type Input = (SolUint<256>, SolUint<32>);
-        let (compute_id, job_id) =
-            Input::abi_decode(task_request.payload.as_slice(), true).unwrap();
+        let (compute_id, job_id) = Input::abi_decode(task_request.payload.as_slice(), true)
+            .map_err(|e| {
+                Status::invalid_argument(format!("Failed to decode task payload: {}", e))
+            })?;
+
         let res = run(
             manager_contract,
             self.eigenda_client.clone(),
             OpenRankExeInput::new(compute_id, job_id),
         )
         .await
-        .unwrap();
+        .map_err(|e| Status::internal(format!("Task execution failed: {}", e)))?;
 
         let mut encoded_res = Vec::new();
         res.encode(&mut encoded_res);
@@ -249,11 +265,14 @@ async fn main() {
     dotenv().ok();
     setup_tracing();
 
-    let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
-    let service_port = dotenv!("SERVICE_PORT");
-    let rpc_url = dotenv!("ETH_RPC_URL");
+    let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set");
+    let service_port = std::env::var("SERVICE_PORT").expect("SERVICE_PORT must be set");
+    let rpc_url = std::env::var("ETH_RPC_URL").expect("ETH_RPC_URL must be set");
     let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
     let mnemonic = dotenv!("MNEMONIC");
+    info!("eigenda_url: {}", eigenda_url);
+    info!("service_port: {}", service_port);
+    info!("rpc_url: {}", rpc_url);
 
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
@@ -264,7 +283,37 @@ async fn main() {
 
     let rpc_client = RpcClient::new_http(Url::parse(&rpc_url).unwrap());
     let manager_address = Address::from_hex(manager_address).unwrap();
-    let eigenda_client = EigenDAProxyClient::new(eigenda_url);
+    let eigenda_client = EigenDAProxyClient::new(eigenda_url.to_string());
+
+    // Test RPC connectivity before starting the service
+    info!("Testing RPC connectivity to {}", rpc_url);
+    let provider_test = ProviderBuilder::new()
+        .wallet(wallet.clone())
+        .on_http(Url::parse(&rpc_url).unwrap());
+
+    // Check if we're running in RXP proxy environment
+    let is_rxp_proxy = rpc_url.contains("reex-proxy");
+
+    if is_rxp_proxy {
+        info!("Running in RXP proxy environment - skipping block number check");
+        info!("RXP proxy detected at {}", rpc_url);
+    } else {
+        match provider_test.get_block_number().await {
+            Ok(block_number) => {
+                info!(
+                    "RPC connection successful. Current block number: {}",
+                    block_number
+                );
+            }
+            Err(e) => {
+                tracing::error!("Failed to connect to RPC endpoint {}: {}", rpc_url, e);
+                tracing::error!(
+                    "Please ensure the Ethereum RPC endpoint is running and accessible"
+                );
+                std::process::exit(1);
+            }
+        }
+    }
 
     info!("Running the rxp node on port {}..", service_port);
 

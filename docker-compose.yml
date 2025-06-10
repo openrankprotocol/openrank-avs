@@ -4,17 +4,16 @@ networks:
 
 services:
     openrank-rxp:
-        ports:
-            - "8080:8080"
+        network_mode: host
         env_file:
             - .env
-        networks:
-            - avsnet
         restart: unless-stopped
         build:
             dockerfile: node/Dockerfile
     anvil:
         ports:
             - "8545:8545"
+        networks:
+            - avsnet
         build:
             dockerfile: anvil/Dockerfile

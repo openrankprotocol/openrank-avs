@@ -85,7 +85,7 @@ $REGISTER_BIN_PATH \
 echo "Current block number:"
 cast block-number --rpc-url "$RPC_URL"
 
-echo "Fast-forward 12000 blocks"
+echo "Fast-forward 11 blocks"
 cast rpc anvil_mine 11 --rpc-url "$RPC_URL"
 
 echo "Current block number:"

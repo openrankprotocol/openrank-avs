@@ -18,6 +18,7 @@ path = "src/bin/rxp.rs"
 [dependencies]
 openrank-common = { workspace = true }
 
+rand = { workspace = true }
 thiserror = { workspace = true }
 alloy = { workspace = true, features = ["signer-mnemonic", "provider-ws"] }
 alloy-rlp = { workspace = true }
