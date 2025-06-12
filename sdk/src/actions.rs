@@ -17,6 +17,28 @@ use std::{
     io::{Read, Write},
 };
 
+/// Helper function to validate trust CSV format
+fn validate_trust_csv(path: &str) -> Result<(), csv::Error> {
+    let file = File::open(path).unwrap();
+    let mut reader = csv::Reader::from_reader(file);
+    for result in reader.records() {
+        let record: csv::StringRecord = result?;
+        let (_, _, _): (String, String, f32) = record.deserialize(None)?;
+    }
+    Ok(())
+}
+
+/// Helper function to validate score CSV format
+fn validate_score_csv(path: &str) -> Result<(), csv::Error> {
+    let file = File::open(path).unwrap();
+    let mut reader = csv::Reader::from_reader(file);
+    for result in reader.records() {
+        let record: csv::StringRecord = result?;
+        let (_, _): (String, f32) = record.deserialize(None)?;
+    }
+    Ok(())
+}
+
 pub async fn upload_trust(client: Client, path: String) -> Result<String, AwsError> {
     let mut f = File::open(path.clone()).unwrap();
     let mut file_bytes = Vec::new();
@@ -27,11 +49,7 @@ pub async fn upload_trust(client: Client, path: String) -> Result<String, AwsErr
     hasher.write_all(&mut file_bytes).unwrap();
     let hash = hasher.finalize().to_vec();
 
-    let mut rdr = csv::Reader::from_reader(f);
-    for result in rdr.records() {
-        let record: csv::StringRecord = result.unwrap();
-        let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
-    }
+    validate_trust_csv(&path).unwrap();
 
     println!("Uploading trust data: {}", hex::encode(hash.clone()));
 
@@ -56,11 +74,7 @@ pub async fn upload_seed(client: Client, path: String) -> Result<String, AwsErro
     hasher.write_all(&mut file_bytes).unwrap();
     let hash = hasher.finalize().to_vec();
 
-    let mut rdr = csv::Reader::from_reader(f);
-    for result in rdr.records() {
-        let record: csv::StringRecord = result.unwrap();
-        let (_, _): (String, f32) = record.deserialize(None).unwrap();
-    }
+    validate_score_csv(&path).unwrap();
 
     println!("Uploading seed data: {}", hex::encode(hash.clone()));
 

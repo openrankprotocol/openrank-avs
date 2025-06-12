@@ -1,9 +1,9 @@
 use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
-    MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
+    MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
 use crate::sol::ReexecutionEndpoint::{
-    OperatorResponse, ReexecutionEndpointInstance, ReexecutionRequestCreated,
+    ReexecutionEndpointInstance,
 };
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
@@ -11,13 +11,13 @@ use alloy::primitives::{Bytes, Uint};
 use alloy::providers::Provider;
 use alloy::rpc::types::Log;
 use aws_sdk_s3::Client;
-use csv::StringRecord;
+
 use futures_util::StreamExt;
 use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
-use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
+use crate::{parse_trust_entries_from_file, parse_score_entries_from_file, download_trust_data_to_file, download_seed_data_to_file, download_scores_data_to_file, download_json_metadata_from_s3};
 use openrank_common::Domain;
 use rand::Rng;
 use serde::de::DeserializeOwned;
@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Write;
+
 use tokio::fs::create_dir_all;
 use tokio::select;
 use tracing::{debug, error, info};
@@ -72,29 +72,15 @@ pub async fn download_meta<T: DeserializeOwned>(
     bucket_name: &str,
     meta_id: String,
 ) -> Result<T, NodeError> {
-    let res = client
-        .get_object()
-        .bucket(bucket_name)
-        .key(format!("meta/{}", meta_id))
-        .send()
-        .await
-        .map_err(|e| NodeError::AwsError(e.into()))?;
-    let res_bytes = res
-        .body
-        .collect()
-        .await
-        .map_err(NodeError::ByteStreamError)?;
-    let meta: T =
-        serde_json::from_slice(res_bytes.to_vec().as_slice()).map_err(NodeError::SerdeError)?;
-    Ok(meta)
+    download_json_metadata_from_s3(client, bucket_name, &meta_id).await
 }
 
 async fn handle_meta_compute_result<PH: Provider>(
     contract: &OpenRankManagerInstance<(), PH>,
     provider: &PH,
-    s3_client: &Client,
+    s3_client: Client,
     eigenda_client: &EigenDAProxyClient,
-    bucket_name: &str,
+    bucket_name: String,
     meta_compute_res: MetaComputeResultEvent,
     log: Log,
     meta_compute_request_map: &HashMap<Uint<256, 4>, MetaComputeRequestEvent>,
@@ -102,8 +88,8 @@ async fn handle_meta_compute_result<PH: Provider>(
     challenge_window: u64,
 ) -> Result<(), NodeError> {
     let meta_result: Vec<JobResult> = download_meta(
-        s3_client,
-        bucket_name,
+        &s3_client,
+        &bucket_name,
         meta_compute_res.resultsId.encode_hex(),
     )
     .await?;
@@ -120,14 +106,14 @@ async fn handle_meta_compute_result<PH: Provider>(
         .get_block(BlockId::Number(BlockNumberOrTag::Latest))
         .await
         .map_err(|e| NodeError::TxError(format!("{e:}")))?
-        .unwrap();
+        .ok_or_else(|| NodeError::TxError("Latest block not found".to_string()))?;
+    let log_block_number = log.block_number
+        .ok_or_else(|| NodeError::TxError("Log block number is missing".to_string()))?;
     let log_block = provider
-        .get_block(BlockId::Number(BlockNumberOrTag::Number(
-            log.block_number.unwrap(),
-        )))
+        .get_block(BlockId::Number(BlockNumberOrTag::Number(log_block_number)))
         .await
         .map_err(|e| NodeError::TxError(format!("{e:}")))?
-        .unwrap();
+        .ok_or_else(|| NodeError::TxError("Log block not found".to_string()))?;
     if already_challenged {
         return Ok(());
     }
@@ -137,150 +123,193 @@ async fn handle_meta_compute_result<PH: Provider>(
     }
     let compute_req = meta_compute_request_map
         .get(&meta_compute_res.computeId)
-        .unwrap();
+        .ok_or_else(|| NodeError::TxError("Compute request not found in map".to_string()))?;
 
     let job_description: Vec<JobDescription> = download_meta(
-        s3_client,
-        bucket_name,
+        &s3_client,
+        &bucket_name,
         compute_req.jobDescriptionId.encode_hex(),
     )
     .await?;
 
+    // Create directories for data storage
+    create_dir_all("./trust/").await
+        .map_err(|e| NodeError::FileError(format!("Failed to create trust directory: {}", e)))?;
+    create_dir_all("./seed/").await
+        .map_err(|e| NodeError::FileError(format!("Failed to create seed directory: {}", e)))?;
+    create_dir_all("./scores/").await
+        .map_err(|e| NodeError::FileError(format!("Failed to create scores directory: {}", e)))?;
+
+    // STAGE 1: Download all data files in parallel
+    info!("STAGE 1: Downloading all data files in parallel...");
+    
+    let download_tasks: Vec<_> = meta_result.iter().enumerate().map(|(i, compute_res)| {
+        let s3_client = s3_client.clone();
+        let bucket_name = bucket_name.clone();
+        let trust_id = job_description[i].trust_id.clone();
+        let seed_id = job_description[i].seed_id.clone();
+        let scores_id = compute_res.scores_id.clone();
+        
+        tokio::spawn(async move {
+            let trust_file_path = format!("./trust/{}", trust_id);
+            let seed_file_path = format!("./seed/{}", seed_id);
+            let scores_file_path = format!("./scores/{}", scores_id);
+            
+            // Check if trust file already exists
+            let (trust_result, trust_downloaded) = if tokio::fs::metadata(&trust_file_path).await.is_ok() {
+                info!("Trust file already exists, skipping download: {}", trust_id);
+                (Ok(()), false)
+            } else {
+                info!("Downloading trust data for Job {}: TrustId({})", i, trust_id);
+                (download_trust_data_to_file(&s3_client, &bucket_name, &trust_id, &trust_file_path).await, true)
+            };
+            
+            // Check if seed file already exists
+            let (seed_result, seed_downloaded) = if tokio::fs::metadata(&seed_file_path).await.is_ok() {
+                info!("Seed file already exists, skipping download: {}", seed_id);
+                (Ok(()), false)
+            } else {
+                info!("Downloading seed data for Job {}: SeedId({})", i, seed_id);
+                (download_seed_data_to_file(&s3_client, &bucket_name, &seed_id, &seed_file_path).await, true)
+            };
+            
+            // Check if scores file already exists
+            let (scores_result, scores_downloaded) = if tokio::fs::metadata(&scores_file_path).await.is_ok() {
+                info!("Scores file already exists, skipping download: {}", scores_id);
+                (Ok(()), false)
+            } else {
+                info!("Downloading scores data for Job {}: ScoresId({})", i, scores_id);
+                (download_scores_data_to_file(&s3_client, &bucket_name, &scores_id, &scores_file_path).await, true)
+            };
+            
+            // Return results with download status
+            (trust_result, seed_result, scores_result, trust_downloaded, seed_downloaded, scores_downloaded, i, trust_id, seed_id, scores_id)
+        })
+    }).collect();
+    
+    // Wait for all downloads to complete
+    let download_results = futures_util::future::join_all(download_tasks).await;
+    
+    // Check for errors and count downloads vs skips
+    let mut trust_downloads = 0;
+    let mut seed_downloads = 0;
+    let mut scores_downloads = 0;
+    
+    for result in download_results {
+        let (trust_result, seed_result, scores_result, trust_downloaded, seed_downloaded, scores_downloaded, _i, trust_id, seed_id, scores_id) = result.map_err(|e| NodeError::TxError(format!("Download task failed: {}", e)))?;
+        
+        trust_result.map_err(|e| NodeError::FileError(format!("Failed to download trust data for {}: {}", trust_id, e)))?;
+        seed_result.map_err(|e| NodeError::FileError(format!("Failed to download seed data for {}: {}", seed_id, e)))?;
+        scores_result.map_err(|e| NodeError::FileError(format!("Failed to download scores data for {}: {}", scores_id, e)))?;
+        
+        if trust_downloaded {
+            trust_downloads += 1;
+        }
+        if seed_downloaded {
+            seed_downloads += 1;
+        }
+        if scores_downloaded {
+            scores_downloads += 1;
+        }
+    }
+    
+    let trust_skips = meta_result.len() - trust_downloads;
+    let seed_skips = meta_result.len() - seed_downloads;
+    let scores_skips = meta_result.len() - scores_downloads;
+    
+    info!(
+        "STAGE 1 complete: Trust files (downloaded: {}, skipped: {}), Seed files (downloaded: {}, skipped: {}), Scores files (downloaded: {}, skipped: {})",
+        trust_downloads, trust_skips, seed_downloads, seed_skips, scores_downloads, scores_skips
+    );
+
+    // STAGE 2: Verification compute in parallel
+    info!("STAGE 2: Running verification compute in parallel...");
+    
+    let verify_tasks: Vec<_> = meta_result.iter().enumerate().map(|(i, compute_res)| {
+        let trust_id = job_description[i].trust_id.clone();
+        let seed_id = job_description[i].seed_id.clone();
+        let scores_id = compute_res.scores_id.clone();
+        let commitment = compute_res.commitment.clone();
+        
+        tokio::task::spawn_blocking(move || -> Result<(bool, String), NodeError> {
+            info!("Running verification for Job {}: TrustId({}), SeedId({}), ScoresId({})", i, trust_id, seed_id, scores_id);
+
+            let trust_file = File::open(&format!("./trust/{}", trust_id))
+                .map_err(|e| NodeError::FileError(format!("Failed to open trust file: {e:}")))?;
+            let seed_file = File::open(&format!("./seed/{}", seed_id))
+                .map_err(|e| NodeError::FileError(format!("Failed to open seed file: {e:}")))?;
+            let scores_file = File::open(&format!("./scores/{}", scores_id))
+                .map_err(|e| NodeError::FileError(format!("Failed to open scores file: {e:}")))?;
+
+            let trust_entries = parse_trust_entries_from_file(trust_file)?;
+            let seed_entries = parse_score_entries_from_file(seed_file)?;
+            let scores_entries = parse_score_entries_from_file(scores_file)?;
+
+            let mock_domain = Domain::default();
+            let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
+            runner
+                .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
+                .map_err(NodeError::VerificationRunnerError)?;
+            runner
+                .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
+                .map_err(NodeError::VerificationRunnerError)?;
+            runner.update_commitment(
+                Hash::from_slice(i.to_be_bytes().as_slice()),
+                Hash::from_slice(
+                    hex::decode(commitment.clone())
+                        .map_err(|e| NodeError::HexError(e))?
+                        .as_slice(),
+                ),
+            );
+            runner
+                .update_scores(
+                    mock_domain.clone(),
+                    Hash::from_slice(i.to_be_bytes().as_slice()),
+                    scores_entries,
+                )
+                .map_err(NodeError::VerificationRunnerError)?;
+            let result = runner
+                .verify_job(mock_domain, Hash::from_slice(i.to_be_bytes().as_slice()))
+                .map_err(NodeError::VerificationRunnerError)?;
+            
+            info!("Verification completed for Job {}: Result({})", i, result);
+
+            Ok((result, commitment))
+        })
+    }).collect();
+    
+    // Wait for all verification tasks to complete
+    let verify_results = futures_util::future::join_all(verify_tasks).await;
+    
+    // Extract results and handle errors
     let mut global_result = true;
     let mut sub_job_failed = 0;
     let mut commitments = Vec::new();
-    for (i, compute_res) in meta_result.iter().enumerate() {
-        info!("Downloading data...");
-
-        create_dir_all(&format!("./trust/")).await.unwrap();
-        create_dir_all(&format!("./seed/")).await.unwrap();
-        create_dir_all(&format!("./scores/")).await.unwrap();
-        let mut trust_file = File::create(&format!("./trust/{}", job_description[i].trust_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-        let mut seed_file = File::create(&format!("./seed/{}", job_description[i].seed_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-        let mut scores_file = File::create(&format!("./scores/{}", compute_res.scores_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-
-        let mut trust_res = s3_client
-            .get_object()
-            .bucket(bucket_name)
-            .key(format!("trust/{}", job_description[i].trust_id))
-            .send()
-            .await
-            .map_err(|e| NodeError::AwsError(e.into()))?;
-        let mut seed_res = s3_client
-            .get_object()
-            .bucket(bucket_name)
-            .key(format!("seed/{}", job_description[i].seed_id))
-            .send()
-            .await
-            .map_err(|e| NodeError::AwsError(e.into()))?;
-        let mut scores_res = s3_client
-            .get_object()
-            .bucket(bucket_name)
-            .key(format!("scores/{}", compute_res.scores_id))
-            .send()
-            .await
-            .map_err(|e| NodeError::AwsError(e.into()))?;
-
-        while let Some(bytes) = trust_res.body.next().await {
-            trust_file
-                .write(&bytes.unwrap())
-                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-        }
-        while let Some(bytes) = seed_res.body.next().await {
-            seed_file
-                .write(&bytes.unwrap())
-                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-        }
-        while let Some(bytes) = scores_res.body.next().await {
-            scores_file
-                .write(&bytes.unwrap())
-                .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
-        }
-    }
-
-    for (i, compute_res) in meta_result.iter().enumerate() {
-        let trust_file = File::open(&format!("./trust/{}", job_description[i].trust_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-        let seed_file = File::open(&format!("./seed/{}", job_description[i].seed_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-        let scores_file = File::open(&format!("./scores/{}", compute_res.scores_id))
-            .map_err(|e| NodeError::FileError(format!("Failed to open file: {e:}")))?;
-
-        let mut trust_rdr = csv::Reader::from_reader(trust_file);
-        let mut seed_rdr = csv::Reader::from_reader(seed_file);
-        let mut scores_rdr = csv::Reader::from_reader(scores_file);
-
-        let mut trust_entries = Vec::new();
-        for result in trust_rdr.records() {
-            let record: StringRecord = result.map_err(NodeError::CsvError)?;
-            let (from, to, value): (String, String, f32) =
-                record.deserialize(None).map_err(NodeError::CsvError)?;
-            let trust_entry = TrustEntry::new(from, to, value);
-            trust_entries.push(trust_entry);
-        }
-
-        let mut seed_entries = Vec::new();
-        for result in seed_rdr.records() {
-            let record: StringRecord = result.map_err(NodeError::CsvError)?;
-            let (id, value): (String, f32) =
-                record.deserialize(None).map_err(NodeError::CsvError)?;
-            let seed_entry = ScoreEntry::new(id, value);
-            seed_entries.push(seed_entry);
-        }
-
-        let mut scores_entries = Vec::new();
-        for result in scores_rdr.records() {
-            let record: StringRecord = result.map_err(NodeError::CsvError)?;
-            let (id, value): (String, f32) =
-                record.deserialize(None).map_err(NodeError::CsvError)?;
-            let score_entry = ScoreEntry::new(id, value);
-            scores_entries.push(score_entry);
-        }
-
-        info!("Starting core compute...");
-        let mock_domain = Domain::default();
-        let mut runner = VerificationRunner::new(&[mock_domain.clone()]);
-        runner
-            .update_trust_map(mock_domain.clone(), trust_entries.to_vec())
-            .map_err(NodeError::VerificationRunnerError)?;
-        runner
-            .update_seed_map(mock_domain.clone(), seed_entries.to_vec())
-            .map_err(NodeError::VerificationRunnerError)?;
-        runner.update_commitment(
-            Hash::from_slice(i.to_be_bytes().as_slice()),
-            Hash::from_slice(
-                hex::decode(compute_res.commitment.clone())
-                    .unwrap()
-                    .as_slice(),
-            ),
-        );
-        runner
-            .update_scores(
-                mock_domain.clone(),
-                Hash::from_slice(i.to_be_bytes().as_slice()),
-                scores_entries,
-            )
-            .map_err(NodeError::VerificationRunnerError)?;
-        let result = runner
-            .verify_job(mock_domain, Hash::from_slice(i.to_be_bytes().as_slice()))
-            .map_err(NodeError::VerificationRunnerError)?;
-        info!("Core Compute verification completed. Result({})", result);
-
-        if !result {
+    
+    for (i, result) in verify_results.into_iter().enumerate() {
+        let (verification_result, commitment) = result
+            .map_err(|e| NodeError::TxError(format!("Verification task {} failed: {}", i, e)))?
+            .map_err(|e| NodeError::FileError(format!("Verification operation {} failed: {}", i, e)))?;
+        
+        if !verification_result {
             global_result = false;
             sub_job_failed = i;
             break;
         }
-        commitments.push(compute_res.commitment.clone());
+        commitments.push(commitment);
     }
+    
+    info!("STAGE 2 complete: All verifications completed in parallel");
 
     let commitment_tree = DenseMerkleTree::<Keccak256>::new(
         commitments
             .iter()
-            .map(|x| Hash::from_slice(hex::decode(x).unwrap().as_slice()))
+            .map(|x| {
+                let decoded = hex::decode(x).map_err(|e| NodeError::HexError(e))?;
+                Ok(Hash::from_slice(decoded.as_slice()))
+            })
+            .collect::<Result<Vec<_>, NodeError>>()?
+            .into_iter()
             .collect(),
     )
     .map_err(|e| NodeError::VerificationRunnerError(verification_runner::Error::Merkle(e)))?;
@@ -305,20 +334,24 @@ async fn handle_meta_compute_result<PH: Provider>(
             "./trust/{}",
             job_description[sub_job_failed].trust_id
         ))
-        .unwrap();
+        .map_err(|e| NodeError::FileError(format!("Failed to read trust data: {}", e)))?;
         let seed_data = std::fs::read(&format!(
             "./seed/{}",
             job_description[sub_job_failed].seed_id
         ))
-        .unwrap();
+        .map_err(|e| NodeError::FileError(format!("Failed to read seed data: {}", e)))?;
         let scores_data = std::fs::read(&format!(
             "./scores/{}",
             meta_result[sub_job_failed].scores_id
         ))
-        .unwrap();
+        .map_err(|e| NodeError::FileError(format!("Failed to read scores data: {}", e)))?;
         let res = EigenDaJobDescription::new(commitments, trust_data, seed_data, scores_data);
-        let data = serde_json::to_vec(&res).unwrap();
-        let certificate = eigenda_client.put_meta(data).await;
+        let data = serde_json::to_vec(&res)
+            .map_err(|e| NodeError::SerdeError(e))?;
+        let certificate = eigenda_client.put_meta(data).await.map_err(|e| {
+            error!("Failed to upload to EigenDA: {}", e);
+            NodeError::EigenDAError(e)
+        })?;
 
         info!("Submitting challenge. Calling 'metaSubmitChallenge'");
         let res = contract
@@ -330,8 +363,14 @@ async fn handle_meta_compute_result<PH: Provider>(
             .send()
             .await;
         if let Ok(res) = res {
-            let tx_res = res.watch().await.unwrap();
-            info!("'metaSubmitChallenge' completed. Tx Hash({:#})", tx_res);
+            match res.watch().await {
+                Ok(tx_res) => {
+                    info!("'metaSubmitChallenge' completed. Tx Hash({:#})", tx_res);
+                }
+                Err(e) => {
+                    error!("Failed to watch transaction: {}", e);
+                }
+            }
         } else {
             let err = res.unwrap_err();
             error!("'metaSubmitChallenge' failed. {}", err);
@@ -348,40 +387,76 @@ pub async fn run<P: Provider, PW: Provider>(
     s3_client: Client,
     eigenda_client: EigenDAProxyClient,
     bucket_name: &str,
-) {
-    let challenge_window = manager_contract.CHALLENGE_WINDOW().call().await.unwrap();
+) -> Result<(), NodeError> {
+    let challenge_window = match manager_contract.CHALLENGE_WINDOW().call().await {
+        Ok(window) => window,
+        Err(e) => {
+            error!("Failed to get challenge window: {}", e);
+            return Err(NodeError::TxError(format!("Failed to get challenge window: {}", e)));
+        }
+    };
 
     // Meta jobs filters
-    let meta_compute_request_filter = manager_contract
+    let meta_compute_request_filter = match manager_contract
         .MetaComputeRequestEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
-        .unwrap();
-    let meta_compute_result_filter = manager_contract
+    {
+        Ok(filter) => filter,
+        Err(e) => {
+            error!("Failed to create meta compute request filter: {}", e);
+            return Err(NodeError::TxError(format!("Failed to create meta compute request filter: {}", e)));
+        }
+    };
+    let meta_compute_result_filter = match manager_contract
         .MetaComputeResultEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
-        .unwrap();
-    let meta_challenge_filter = manager_contract
+    {
+        Ok(filter) => filter,
+        Err(e) => {
+            error!("Failed to create meta compute result filter: {}", e);
+            return Err(NodeError::TxError(format!("Failed to create meta compute result filter: {}", e)));
+        }
+    };
+    let meta_challenge_filter = match manager_contract
         .MetaChallengeEvent_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
-        .unwrap();
-    let reexecution_request_filter = rxp_contract
+    {
+        Ok(filter) => filter,
+        Err(e) => {
+            error!("Failed to create meta challenge filter: {}", e);
+            return Err(NodeError::TxError(format!("Failed to create meta challenge filter: {}", e)));
+        }
+    };
+    let reexecution_request_filter = match rxp_contract
         .ReexecutionRequestCreated_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
-        .unwrap();
-    let operator_response_filter = rxp_contract
+    {
+        Ok(filter) => filter,
+        Err(e) => {
+            error!("Failed to create reexecution request filter: {}", e);
+            return Err(NodeError::TxError(format!("Failed to create reexecution request filter: {}", e)));
+        }
+    };
+    let operator_response_filter = match rxp_contract
         .OperatorResponse_filter()
         .from_block(BlockNumberOrTag::Latest)
         .watch()
         .await
-        .unwrap();
+    {
+        Ok(filter) => filter,
+        Err(e) => {
+            error!("Failed to create operator response filter: {}", e);
+            return Err(NodeError::TxError(format!("Failed to create operator response filter: {}", e)));
+        }
+    };
 
     // Meta streams
     let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
@@ -399,69 +474,104 @@ pub async fn run<P: Provider, PW: Provider>(
         select! {
             meta_compute_request_event = meta_compute_request_stream.next() => {
                 if let Some(res) = meta_compute_request_event {
-                    let (compute_req, log): (MetaComputeRequestEvent, Log) = res.unwrap();
-                    info!(
-                        "MetaComputeRequestEvent: ComputeId({}), JobDescriptionId({:#})",
-                        compute_req.computeId, compute_req.jobDescriptionId
-                    );
-                    debug!("{:?}", log);
+                    match res {
+                        Ok((compute_req, log)) => {
+                            info!(
+                                "MetaComputeRequestEvent: ComputeId({}), JobDescriptionId({:#})",
+                                compute_req.computeId, compute_req.jobDescriptionId
+                            );
+                            debug!("{:?}", log);
 
-                    meta_compute_request_map.insert(compute_req.computeId, compute_req);
+                            meta_compute_request_map.insert(compute_req.computeId, compute_req);
+                        }
+                        Err(e) => {
+                            error!("Error processing meta compute request event: {}", e);
+                        }
+                    }
                 }
             }
             meta_compute_result_event = meta_compute_result_stream.next() => {
                 if let Some(res) = meta_compute_result_event {
-                    let (compute_res, log): (MetaComputeResultEvent, Log) = res.unwrap();
-                    handle_meta_compute_result(
-                        &manager_contract,
-                        &provider,
-                        &s3_client,
-                        &eigenda_client,
-                        bucket_name,
-                        compute_res,
-                        log,
-                        &meta_compute_request_map,
-                        &meta_challanged_jobs_map,
-                        challenge_window._0,
-                    ).await.unwrap();
+                    match res {
+                        Ok((meta_compute_res, log)) => {
+                            if let Err(e) = handle_meta_compute_result(
+                                &manager_contract,
+                                &provider,
+                                s3_client.clone(),
+                                &eigenda_client,
+                                bucket_name.to_string(),
+                                meta_compute_res,
+                                log,
+                                &meta_compute_request_map,
+                                &meta_challanged_jobs_map,
+                                challenge_window._0,
+                            ).await {
+                                error!("Error handling meta compute result: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            error!("Error processing meta compute result event: {}", e);
+                        }
+                    }
                 }
             }
             meta_challenge_event = meta_challenge_stream.next() => {
                 if let Some(res) = meta_challenge_event {
-                    let (challenge, log): (MetaChallengeEvent, Log) = res.unwrap();
-                    info!(
-                        "MetaChallengeEvent: ComputeId({:#}) SubJobID({:#})",
-                        challenge.computeId,
-                        challenge.subJobId
-                    );
-                    debug!("{:?}", log);
+                    match res {
+                        Ok((challenge, log)) => {
+                            info!(
+                                "MetaChallengeEvent: ComputeId({:#}) SubJobID({:#})",
+                                challenge.computeId,
+                                challenge.subJobId
+                            );
+                            debug!("{:?}", log);
 
-                    meta_challanged_jobs_map.insert(challenge.computeId, log);
+                            meta_challanged_jobs_map.insert(challenge.computeId, log);
+                        }
+                        Err(e) => {
+                            error!("Error processing meta challenge event: {}", e);
+                        }
+                    }
                 }
             }
             reexecution_request_event = reexecution_request_stream.next() => {
                 if let Some(res) = reexecution_request_event {
-                    let (request, log): (ReexecutionRequestCreated, Log) = res.unwrap();
-                    info!(
-                        "ReexecutionRequestCreated: requestIndex({:#}) avs({:#}), reservationID({:#})",
-                        request.requestIndex,
-                        request.avs,
-                        request.reservationID,
-                    );
-                    debug!("{:?}", log);
+                    match res {
+                        Ok((request, log)) => {
+                            info!(
+                                "ReexecutionRequestCreated: requestIndex({:#}) avs({:#}), reservationID({:#})",
+                                request.requestIndex,
+                                request.avs,
+                                request.reservationID,
+                            );
+                            debug!("{:?}", log);
+                        }
+                        Err(e) => {
+                            error!("Error processing reexecution request event: {}", e);
+                        }
+                    }
                 }
             }
             operator_response_event = operator_response_stream.next() => {
                 if let Some(res) = operator_response_event {
-                    let (response, log): (OperatorResponse, Log) = res.unwrap();
-                    info!(
-                        "OperatorResponse: operator({:#}) response({:#})",
-                        response.operator,
-                        response.response
-                    );
-                    debug!("{:?}", log);
+                    match res {
+                        Ok((response, log)) => {
+                            info!(
+                                "OperatorResponse: operator({:#}) response({:#})",
+                                response.operator,
+                                response.response
+                            );
+                            debug!("{:?}", log);
+                        }
+                        Err(e) => {
+                            error!("Error processing operator response event: {}", e);
+                        }
+                    }
                 }
             }
         }
     }
+    // This is unreachable due to the infinite loop above, but needed for the Result return type
+    #[allow(unreachable_code)]
+    Ok(())
 }

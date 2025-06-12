@@ -25,6 +25,47 @@ use std::collections::HashMap;
 use std::fs::{read_dir, File};
 use std::io::Write;
 
+/// Helper function to parse trust entries from a CSV file
+fn parse_trust_entries_from_file(file: File) -> Result<Vec<TrustEntry>, csv::Error> {
+    let mut reader = csv::Reader::from_reader(file);
+    let mut entries = Vec::new();
+    
+    for result in reader.records() {
+        let record: StringRecord = result?;
+        let (from, to, value): (String, String, f32) = record.deserialize(None)?;
+        let trust_entry = TrustEntry::new(from, to, value);
+        entries.push(trust_entry);
+    }
+    
+    Ok(entries)
+}
+
+/// Helper function to parse score entries from a CSV file
+fn parse_score_entries_from_file(file: File) -> Result<Vec<ScoreEntry>, csv::Error> {
+    let mut reader = csv::Reader::from_reader(file);
+    let mut entries = Vec::new();
+    
+    for result in reader.records() {
+        let record: StringRecord = result?;
+        let (id, value): (String, f32) = record.deserialize(None)?;
+        let score_entry = ScoreEntry::new(id, value);
+        entries.push(score_entry);
+    }
+    
+    Ok(entries)
+}
+
+/// Helper function to validate trust CSV format
+fn validate_trust_csv(path: &str) -> Result<(), csv::Error> {
+    let file = File::open(path).unwrap();
+    let mut reader = csv::Reader::from_reader(file);
+    for result in reader.records() {
+        let record: StringRecord = result?;
+        let (_, _, _): (String, String, f32) = record.deserialize(None)?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
 enum Method {
@@ -177,25 +218,11 @@ async fn main() -> Result<(), AwsError> {
             output_path,
         } => {
             let f = File::open(trust_path).unwrap();
-            let mut rdr = csv::Reader::from_reader(f);
-            let mut trust_entries = Vec::new();
-            for result in rdr.records() {
-                let record: StringRecord = result.unwrap();
-                let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
-                let trust_entry = TrustEntry::new(from, to, value);
-                trust_entries.push(trust_entry);
-            }
+            let trust_entries = parse_trust_entries_from_file(f).unwrap();
 
             // Read CSV, to get a list of `ScoreEntry`
             let f = File::open(seed_path).unwrap();
-            let mut rdr = csv::Reader::from_reader(f);
-            let mut seed_entries = Vec::new();
-            for result in rdr.records() {
-                let record: StringRecord = result.unwrap();
-                let (i, value): (String, f32) = record.deserialize(None).unwrap();
-                let score_entry = ScoreEntry::new(i, value);
-                seed_entries.push(score_entry);
-            }
+            let seed_entries = parse_score_entries_from_file(f).unwrap();
 
             let scores_vec = compute_local(&trust_entries, &seed_entries).await.unwrap();
 
@@ -225,36 +252,15 @@ async fn main() -> Result<(), AwsError> {
             scores_path,
         } => {
             let f = File::open(trust_path).unwrap();
-            let mut rdr = csv::Reader::from_reader(f);
-            let mut trust_entries = Vec::new();
-            for result in rdr.records() {
-                let record: StringRecord = result.unwrap();
-                let (from, to, value): (String, String, f32) = record.deserialize(None).unwrap();
-                let trust_entry = TrustEntry::new(from, to, value);
-                trust_entries.push(trust_entry);
-            }
+            let trust_entries = parse_trust_entries_from_file(f).unwrap();
 
             // Read CSV, to get a list of `ScoreEntry`
             let f = File::open(seed_path).unwrap();
-            let mut rdr = csv::Reader::from_reader(f);
-            let mut seed_entries = Vec::new();
-            for result in rdr.records() {
-                let record: StringRecord = result.unwrap();
-                let (i, value): (String, f32) = record.deserialize(None).unwrap();
-                let score_entry = ScoreEntry::new(i, value);
-                seed_entries.push(score_entry);
-            }
+            let seed_entries = parse_score_entries_from_file(f).unwrap();
 
             // Read CSV, to get a list of `ScoreEntry`
             let f = File::open(scores_path).unwrap();
-            let mut rdr = csv::Reader::from_reader(f);
-            let mut scores_entries = Vec::new();
-            for result in rdr.records() {
-                let record: StringRecord = result.unwrap();
-                let (i, value): (String, f32) = record.deserialize(None).unwrap();
-                let score_entry = ScoreEntry::new(i, value);
-                scores_entries.push(score_entry);
-            }
+            let scores_entries = parse_score_entries_from_file(f).unwrap();
 
             let res = verify_local(&trust_entries, &seed_entries, &scores_entries)
                 .await
@@ -262,18 +268,12 @@ async fn main() -> Result<(), AwsError> {
             println!("Verification result: {}", res);
         }
         Method::UploadTrust { path, certs_path } => {
-            {
-                let f = File::open(path.clone()).unwrap();
-                let mut rdr = csv::Reader::from_reader(f);
-                for result in rdr.records() {
-                    let record: StringRecord = result.unwrap();
-                    let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
-                }
-            }
+            // Validate CSV format
+            validate_trust_csv(&path).unwrap();
             let data = std::fs::read(&path).unwrap(); // Read the contents of the file into a vector of bytes
 
             let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
-            let res = eigenda_client.put_meta(data).await;
+            let res = eigenda_client.put_meta(data).await.unwrap();
 
             let mut file = File::create(certs_path).unwrap();
             file.write(&res).unwrap();
@@ -283,7 +283,7 @@ async fn main() -> Result<(), AwsError> {
 
             let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
 
-            let res = eigenda_client.put_meta(data).await;
+            let res = eigenda_client.get_meta(data).await.unwrap();
             let mut file = File::create(path).unwrap();
             file.write(&res).unwrap();
         }

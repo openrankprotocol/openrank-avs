@@ -24,7 +24,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     dotenv().ok();
     setup_tracing();
@@ -45,28 +45,33 @@ async fn main() {
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
         .index(0)
-        .unwrap()
+        .map_err(|e| format!("Failed to set mnemonic index: {}", e))?
         .build()
-        .unwrap();
+        .map_err(|e| format!("Failed to build wallet: {}", e))?;
 
+    let rpc_url_parsed = Url::parse(&rpc_url)
+        .map_err(|e| format!("Failed to parse RPC URL '{}': {}", rpc_url, e))?;
     let provider_http = ProviderBuilder::new()
         .wallet(wallet.clone())
-        .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
+        .on_client(RpcClient::new_http(rpc_url_parsed));
 
     let ws = WsConnect::new(wss_url);
-    let provider_wss = ProviderBuilder::new().on_ws(ws).await.unwrap();
+    let provider_wss = ProviderBuilder::new().on_ws(ws).await
+        .map_err(|e| format!("Failed to connect to WebSocket: {}", e))?;
 
-    let manager_address = Address::from_hex(manager_address).unwrap();
+    let manager_address = Address::from_hex(manager_address)
+        .map_err(|e| format!("Failed to parse manager address: {}", e))?;
     let manager_contract = OpenRankManager::new(manager_address, provider_http.clone());
     let manager_contract_ws = OpenRankManager::new(manager_address, provider_wss.clone());
 
-    let rxp_address = Address::from_hex(rxp_address).unwrap();
+    let rxp_address = Address::from_hex(rxp_address)
+        .map_err(|e| format!("Failed to parse RXP address: {}", e))?;
     let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_wss);
 
     let eigenda_client = EigenDAProxyClient::new(eigenda_url);
 
     if cli.challenger {
-        challenger::run(
+        if let Err(e) = challenger::run(
             manager_contract,
             rxp_contract,
             provider_http,
@@ -74,8 +79,15 @@ async fn main() {
             eigenda_client,
             BUCKET_NAME,
         )
-        .await;
+        .await {
+            eprintln!("Challenger failed: {}", e);
+            std::process::exit(1);
+        }
     } else {
-        computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await;
+        if let Err(e) = computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await {
+            eprintln!("Computer failed: {}", e);
+            std::process::exit(1);
+        }
     }
+    Ok(())
 }

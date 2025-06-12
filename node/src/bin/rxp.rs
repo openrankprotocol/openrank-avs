@@ -1,6 +1,6 @@
 use alloy::hex::{self, FromHex};
 use alloy::primitives::{Address, FixedBytes, Uint};
-use alloy::providers::{Provider, ProviderBuilder, WsConnect};
+use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
@@ -8,14 +8,14 @@ use alloy::sol_types::sol_data::Uint as SolUint;
 use alloy::sol_types::SolType;
 use alloy::transports::http::reqwest::Url;
 use alloy_rlp::{Encodable, RlpEncodable};
-use csv::StringRecord;
+use openrank_node::{parse_trust_entries_from_tuples, parse_score_entries_from_tuples};
 use dotenv::dotenv;
 use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
-use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
+
 use openrank_common::Domain;
 use openrank_node::sol::OpenRankManager;
 use openrank_node::{error::Error as NodeError, sol::OpenRankManager::OpenRankManagerInstance};
@@ -86,7 +86,10 @@ pub async fn download_meta<T: DeserializeOwned>(
         "Downloading metadata from EigenDA with certificate length: {}",
         certificate.len()
     );
-    let res_bytes = eigenda_client.get_meta(certificate).await;
+    let res_bytes = eigenda_client.get_meta(certificate).await.map_err(|e| {
+        tracing::error!("Failed to download from EigenDA: {}", e);
+        NodeError::EigenDAError(e)
+    })?;
     info!("Retrieved {} bytes from EigenDA", res_bytes.len());
     let meta: T = serde_json::from_slice(res_bytes.as_slice()).map_err(|e| {
         tracing::error!("Failed to deserialize metadata from EigenDA: {}", e);
@@ -113,34 +116,9 @@ pub async fn run<P: Provider>(
     let meta_result: EigenDaJobDescription =
         download_meta(&eigenda_client, challenge.certificate.to_vec()).await?;
 
-    let mut trust_rdr = csv::Reader::from_reader(meta_result.trust_data.as_slice());
-    let mut seed_rdr = csv::Reader::from_reader(meta_result.seed_data.as_slice());
-    let mut scores_rdr = csv::Reader::from_reader(meta_result.scores_data.as_slice());
-
-    let mut trust_entries = Vec::new();
-    for result in trust_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (from, to, value): (String, String, f32) =
-            record.deserialize(None).map_err(NodeError::CsvError)?;
-        let trust_entry = TrustEntry::new(from, to, value);
-        trust_entries.push(trust_entry);
-    }
-
-    let mut seed_entries = Vec::new();
-    for result in seed_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
-        let seed_entry = ScoreEntry::new(id, value);
-        seed_entries.push(seed_entry);
-    }
-
-    let mut scores_entries = Vec::new();
-    for result in scores_rdr.records() {
-        let record: StringRecord = result.map_err(NodeError::CsvError)?;
-        let (id, value): (String, f32) = record.deserialize(None).map_err(NodeError::CsvError)?;
-        let score_entry = ScoreEntry::new(id, value);
-        scores_entries.push(score_entry);
-    }
+    let trust_entries = parse_trust_entries_from_tuples(&meta_result.trust_data)?;
+    let seed_entries = parse_score_entries_from_tuples(&meta_result.seed_data)?;
+    let scores_entries = parse_score_entries_from_tuples(&meta_result.scores_data)?;
 
     info!("Starting core compute...");
     let mock_domain = Domain::default();
@@ -165,8 +143,11 @@ pub async fn run<P: Provider>(
     let mut commitments: Vec<Hash> = meta_result
         .neighbour_commitments
         .iter()
-        .map(|x| Hash::from_slice(hex::decode(x).unwrap().as_slice()))
-        .collect();
+        .map(|x| {
+            let decoded = hex::decode(x).map_err(|e| NodeError::HexError(e))?;
+            Ok(Hash::from_slice(decoded.as_slice()))
+        })
+        .collect::<Result<Vec<_>, NodeError>>()?;
     commitments.insert(challenge.subJobId as usize, sub_job_commitment.clone());
 
     let commitment_tree = DenseMerkleTree::<Keccak256>::new(commitments)
@@ -177,8 +158,10 @@ pub async fn run<P: Provider>(
 
     let exe_res = OpenRankExeResult {
         result,
-        sub_job_commitment: FixedBytes::<32>::from_hex(sub_job_commitment.to_hex()).unwrap(),
-        meta_commitment: FixedBytes::<32>::from_hex(meta_commitment.to_hex()).unwrap(),
+        sub_job_commitment: FixedBytes::<32>::from_hex(sub_job_commitment.to_hex())
+            .map_err(|e| NodeError::HexError(e))?,
+        meta_commitment: FixedBytes::<32>::from_hex(meta_commitment.to_hex())
+            .map_err(|e| NodeError::HexError(e))?,
     };
 
     Ok(exe_res)
@@ -260,7 +243,7 @@ impl PerformerService for RxpService {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     dotenv().ok();
     setup_tracing();
@@ -277,19 +260,22 @@ async fn main() {
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
         .index(0)
-        .unwrap()
+        .map_err(|e| format!("Failed to set mnemonic index: {}", e))?
         .build()
-        .unwrap();
+        .map_err(|e| format!("Failed to build wallet: {}", e))?;
 
-    let rpc_client = RpcClient::new_http(Url::parse(&rpc_url).unwrap());
-    let manager_address = Address::from_hex(manager_address).unwrap();
+    let rpc_url_parsed = Url::parse(&rpc_url)
+        .map_err(|e| format!("Failed to parse RPC URL '{}': {}", rpc_url, e))?;
+    let rpc_client = RpcClient::new_http(rpc_url_parsed.clone());
+    let manager_address = Address::from_hex(manager_address)
+        .map_err(|e| format!("Failed to parse manager address: {}", e))?;
     let eigenda_client = EigenDAProxyClient::new(eigenda_url.to_string());
 
     // Test RPC connectivity before starting the service
     info!("Testing RPC connectivity to {}", rpc_url);
     let provider_test = ProviderBuilder::new()
         .wallet(wallet.clone())
-        .on_http(Url::parse(&rpc_url).unwrap());
+        .on_http(rpc_url_parsed);
 
     // Check if we're running in RXP proxy environment
     let is_rxp_proxy = rpc_url.contains("reex-proxy");
@@ -320,14 +306,17 @@ async fn main() {
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(proto::FILE_DESCRIPTOR_SET)
         .build()
-        .unwrap();
+        .map_err(|e| format!("Failed to build reflection service: {}", e))?;
 
     let rxp_service = RxpService::new(wallet, rpc_client, eigenda_client, manager_address);
-    let addr = format!("0.0.0.0:{}", service_port).parse().unwrap();
+    let addr = format!("0.0.0.0:{}", service_port).parse()
+        .map_err(|e| format!("Failed to parse server address: {}", e))?;
     Server::builder()
         .add_service(reflection_service)
         .add_service(PerformerServiceServer::new(rxp_service))
         .serve(addr)
         .await
-        .unwrap();
+        .map_err(|e| format!("Server failed: {}", e))?;
+    
+    Ok(())
 }
