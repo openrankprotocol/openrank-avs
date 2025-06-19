@@ -56,7 +56,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .on_client(RpcClient::new_http(rpc_url_parsed));
 
     let ws = WsConnect::new(wss_url);
-    let provider_wss = ProviderBuilder::new().on_ws(ws).await
+    let provider_wss = ProviderBuilder::new()
+        .on_ws(ws)
+        .await
         .map_err(|e| format!("Failed to connect to WebSocket: {}", e))?;
 
     let manager_address = Address::from_hex(manager_address)
@@ -79,12 +81,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             eigenda_client,
             BUCKET_NAME,
         )
-        .await {
+        .await
+        {
             eprintln!("Challenger failed: {}", e);
             std::process::exit(1);
         }
     } else {
-        if let Err(e) = computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await {
+        if let Err(e) =
+            computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await
+        {
             eprintln!("Computer failed: {}", e);
             std::process::exit(1);
         }

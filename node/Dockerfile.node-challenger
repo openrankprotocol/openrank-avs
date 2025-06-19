@@ -3,6 +3,7 @@ FROM messense/rust-musl-cross:x86_64-musl AS builder
 WORKDIR /app
 
 COPY . .
+WORKDIR /app/node
 
 RUN sudo apt-get update && apt-get install pkg-config -y
 RUN apt-get install protobuf-compiler -y
@@ -22,5 +23,5 @@ EXPOSE 8080
 
 ENV RUST_LOG=info
 
-# Set the entrypoint to run in computer mode (default)
-ENTRYPOINT ["/app/openrank-node"]
+# Set the entrypoint to run in challenger mode
+ENTRYPOINT ["/app/openrank-node", "--challenger"]

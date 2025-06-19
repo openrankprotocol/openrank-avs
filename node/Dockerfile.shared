@@ -1,0 +1,42 @@
+# Shared builder Dockerfile for OpenRank Node
+# This builds the openrank-node binary once and creates different runtime images
+
+FROM messense/rust-musl-cross:x86_64-musl AS builder
+
+WORKDIR /app
+
+# Install system dependencies first
+RUN sudo apt-get update && apt-get install pkg-config protobuf-compiler -y
+RUN rustup target add x86_64-unknown-linux-musl
+
+# Copy the entire workspace for dependencies
+COPY . .
+
+# Change to node directory and build both binaries
+WORKDIR /app/node
+RUN cargo build --release --target=x86_64-unknown-linux-musl --bin openrank-node
+RUN cargo build --release --target=x86_64-unknown-linux-musl --bin openrank-rxp
+
+# Runtime stage for computer mode
+FROM alpine:latest AS computer
+WORKDIR /app
+COPY --from=builder /app/node/target/x86_64-unknown-linux-musl/release/openrank-node .
+EXPOSE 8080
+ENV RUST_LOG=info
+ENTRYPOINT ["/app/openrank-node"]
+
+# Runtime stage for challenger mode
+FROM alpine:latest AS challenger
+WORKDIR /app
+COPY --from=builder /app/node/target/x86_64-unknown-linux-musl/release/openrank-node .
+EXPOSE 8080
+ENV RUST_LOG=info
+ENTRYPOINT ["/app/openrank-node", "--challenger"]
+
+# Runtime stage for RXP
+FROM alpine:latest AS rxp
+WORKDIR /app
+COPY --from=builder /app/node/target/x86_64-unknown-linux-musl/release/openrank-rxp .
+EXPOSE 8080
+ENV RUST_LOG=info
+ENTRYPOINT ["/app/openrank-rxp"]

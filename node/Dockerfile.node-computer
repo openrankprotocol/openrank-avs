@@ -3,6 +3,7 @@ FROM messense/rust-musl-cross:x86_64-musl AS builder
 WORKDIR /app
 
 COPY . .
+WORKDIR /app/node
 
 RUN sudo apt-get update && apt-get install pkg-config -y
 RUN apt-get install protobuf-compiler -y

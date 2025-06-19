@@ -11,6 +11,7 @@ import {IReservationRegistry} from "rxp/src/interfaces/core/IReservationRegistry
 import {IReexecutionEndpoint} from "rxp/src/interfaces/core/IReexecutionEndpoint.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Vm} from "forge-std/Vm.sol";
 
 contract DeployOpenRank is Script {
     DeployEigenLayerCore public coreDeployer;
@@ -33,6 +34,7 @@ contract DeployOpenRank is Script {
 
         vm.startBroadcast(initialOwner);
         _deployOrManager();
+        _writeOrOutputJSON();
         vm.stopBroadcast();
     }
 
@@ -46,6 +48,7 @@ contract DeployOpenRank is Script {
 
         vm.startPrank(sender);
         _deployOrManager();
+        _writeOrOutputJSON();
         vm.stopPrank();
     }
 
@@ -95,5 +98,22 @@ contract DeployOpenRank is Script {
 
         console.log("address(orManager): ", address(orManager));
         console.log("address(reexecutionEndpoint): ", address(reexecutionEndpoint));
+    }
+
+    function _writeOrOutputJSON() internal {
+        string memory outputPath = "script/local/output/deploy_or_contracts_output.json";
+
+        string memory json = string.concat(
+            '{\n',
+            '  "addresses": {\n',
+            '    "openRankManager": "',
+            vm.toString(address(orManager)),
+            '"\n',
+            '  }\n',
+            '}'
+        );
+
+        vm.writeFile(outputPath, json);
+        console.log("OpenRank deployment output written to:", outputPath);
     }
 }

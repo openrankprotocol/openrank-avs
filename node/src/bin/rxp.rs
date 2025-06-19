@@ -8,13 +8,13 @@ use alloy::sol_types::sol_data::Uint as SolUint;
 use alloy::sol_types::SolType;
 use alloy::transports::http::reqwest::Url;
 use alloy_rlp::{Encodable, RlpEncodable};
-use openrank_node::{parse_trust_entries_from_tuples, parse_score_entries_from_tuples};
 use dotenv::dotenv;
 use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
+use openrank_node::{parse_score_entries_from_tuples, parse_trust_entries_from_tuples};
 
 use openrank_common::Domain;
 use openrank_node::sol::OpenRankManager;
@@ -251,7 +251,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set");
     let service_port = std::env::var("SERVICE_PORT").expect("SERVICE_PORT must be set");
     let rpc_url = std::env::var("ETH_RPC_URL").expect("ETH_RPC_URL must be set");
-    let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
+    let manager_address =
+        std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set");
     let mnemonic = dotenv!("MNEMONIC");
     info!("eigenda_url: {}", eigenda_url);
     info!("service_port: {}", service_port);
@@ -309,7 +310,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(|e| format!("Failed to build reflection service: {}", e))?;
 
     let rxp_service = RxpService::new(wallet, rpc_client, eigenda_client, manager_address);
-    let addr = format!("0.0.0.0:{}", service_port).parse()
+    let addr = format!("0.0.0.0:{}", service_port)
+        .parse()
         .map_err(|e| format!("Failed to parse server address: {}", e))?;
     Server::builder()
         .add_service(reflection_service)
@@ -317,6 +319,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .serve(addr)
         .await
         .map_err(|e| format!("Server failed: {}", e))?;
-    
+
     Ok(())
 }
