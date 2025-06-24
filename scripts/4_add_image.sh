@@ -16,8 +16,6 @@ IMAGESTORE_BIN_PATH=/Users/filiplazovic/go/bin/imagestore
 
 IMAGE_NAME=openrank-rxp
 IMAGESTORE_PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-RPC_URL=http://127.0.0.1:8545
-DA_URL=http://127.0.0.1:3100
 
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then

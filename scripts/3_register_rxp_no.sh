@@ -6,10 +6,15 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../script
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REGISTER_BIN_PATH=/Users/filiplazovic/go/bin/register
 
+ENV_FILE="$CURRENT_DIR/../.env"
+if [ -f "$ENV_FILE" ]; then
+    echo "Loading environment variables from .env file"
+    source $ENV_FILE
+fi
+
 PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 OPERATOR_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 BLS_PRIVATE_KEY=11
-RPC_URL=http://127.0.0.1:8545
 FUNDS_PK=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 DELEGATION_MANAGER_ADDRESS=$(jq -r '.addresses.delegationManager' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json)
 STRATEGY_ADDRESS=$(jq -r '.addresses.operatorSet.mockStrategy' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json)

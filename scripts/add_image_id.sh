@@ -1,7 +1,6 @@
 DEPLOYMENT_ENV="$1"
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SCRIPT_DIR="$CURRENT_DIR/../script/"$DEPLOYMENT_ENV""
-RPC_URL=http://127.0.0.1:8545
 
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then

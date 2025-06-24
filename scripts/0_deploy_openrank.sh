@@ -8,7 +8,6 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 if [ "$1" = "local" ]; then
-    RPC_URL=http://127.0.0.1:8545
     forge script contracts/script/DeployOpenRankLocal.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
 else
     forge script contracts/script/DeployOpenRankTestnet.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
