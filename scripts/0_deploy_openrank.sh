@@ -7,6 +7,9 @@ if [ -f "$ENV_FILE" ]; then
     source $ENV_FILE
 fi
 
-cd "$ROOT_DIR"
-docker compose up anvil -d
-forge script contracts/script/DeployOpenRank.s.sol --private-keys $PRIVATE_KEY --rpc-url http://localhost:8545 --broadcast --tx-origin $ADDRESS -vvv
+if [ "$1" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    forge script contracts/script/DeployOpenRankLocal.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
+else
+    forge script contracts/script/DeployOpenRankTestnet.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
+fi

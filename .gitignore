@@ -17,6 +17,8 @@ contracts/docs/
 
 # Dotenv file
 .env
+.env.holesky
+.env.local
 
 seed/
 trust/

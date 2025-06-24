@@ -1,5 +1,7 @@
+DEPLOYMENT_ENV="$1"
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SCRIPT_DIR="$CURRENT_DIR/../script/local"
+SCRIPT_DIR="$CURRENT_DIR/../script/"$DEPLOYMENT_ENV""
+RPC_URL=http://127.0.0.1:8545
 
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then
@@ -18,10 +20,18 @@ echo "OPENRANK_MANAGER_ADDRESS: $OPENRANK_MANAGER_ADDRESS"
 echo "REEXECUTION_ENDPOINT_ADDRESS: $REEXECUTION_ENDPOINT_ADDRESS"
 echo "IMAGE_ID: $IMAGE_ID"
 
-# Export for use in forge script
-export OPENRANK_MANAGER_ADDRESS
-export REEXECUTION_ENDPOINT_ADDRESS
-export IMAGE_ID
+# Handle different sed syntax for Linux and macOS
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    sed -i "s/OPENRANK_MANAGER_ADDRESS=.*/OPENRANK_MANAGER_ADDRESS=$OPENRANK_MANAGER_ADDRESS/" "$ENV_FILE"
+    sed -i "s/REEXECUTION_ENDPOINT_ADDRESS=.*/REEXECUTION_ENDPOINT_ADDRESS=$REEXECUTION_ENDPOINT_ADDRESS/" "$ENV_FILE"
+    sed -i "s/IMAGE_ID=.*/IMAGE_ID=$IMAGE_ID/" "$ENV_FILE"
+else
+    # macOS
+    sed -i '' "s/OPENRANK_MANAGER_ADDRESS=.*/OPENRANK_MANAGER_ADDRESS=$OPENRANK_MANAGER_ADDRESS/" "$ENV_FILE"
+    sed -i '' "s/REEXECUTION_ENDPOINT_ADDRESS=.*/REEXECUTION_ENDPOINT_ADDRESS=$REEXECUTION_ENDPOINT_ADDRESS/" "$ENV_FILE"
+    sed -i '' "s/IMAGE_ID=.*/IMAGE_ID=$IMAGE_ID/" "$ENV_FILE"
+fi
 
 cd "$CURRENT_DIR/.."
-forge script contracts/script/AddImageId.s.sol --private-keys $PRIVATE_KEY --rpc-url http://localhost:8545 --broadcast --tx-origin $ADDRESS -vvv
+forge script contracts/script/AddImageId.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv

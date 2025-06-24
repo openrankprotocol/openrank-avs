@@ -251,8 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let eigenda_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set");
     let service_port = std::env::var("SERVICE_PORT").expect("SERVICE_PORT must be set");
     let rpc_url = std::env::var("ETH_RPC_URL").expect("ETH_RPC_URL must be set");
-    let manager_address =
-        std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set");
+    let manager_address = dotenv!("OPENRANK_MANAGER_ADDRESS");
     let mnemonic = dotenv!("MNEMONIC");
     info!("eigenda_url: {}", eigenda_url);
     info!("service_port: {}", service_port);

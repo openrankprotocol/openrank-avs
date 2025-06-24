@@ -3,7 +3,7 @@ pragma solidity ^0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {OpenRankManager} from "../src/OpenRankManager.sol";
-import {DeployOpenRank} from "../script/DeployOpenRank.s.sol";
+import {DeployOpenRank} from "../script/DeployOpenRankLocal.s.sol";
 
 import {DeployRxp_Local} from "rxp/script/local/deploy/deploy_rxp_contracts.s.sol";
 import {IReexecutionEndpoint} from "rxp/src/interfaces/core/IReexecutionEndpoint.sol";

@@ -42,6 +42,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = from_env().region("us-west-2").load().await;
     let client = Client::new(&config);
 
+    println!("rpc_url: {}", rpc_url);
+    println!("wss_url: {}", wss_url);
+    println!("eigenda_url: {}", eigenda_url);
+
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
         .index(0)

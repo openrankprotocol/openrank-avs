@@ -3,9 +3,10 @@
 # Exit on error
 set -e
 
+DEPLOYMENT_ENV="$1"
 RXP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../contracts/lib/rxp
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../script
-RESERVATION_REGISTRY_ADDRESS=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json)
+RESERVATION_REGISTRY_ADDRESS=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json)
 
 cp "$RXP_DIR"/archiver/.env.example "$RXP_DIR"/archiver/.env
 
@@ -34,8 +35,8 @@ cd "$RXP_DIR"/archiver && docker compose -f docker-compose.yml up --build -d
 
 # ------------------------------------------------------------------------------------------------
 
-REEXECUTION_ENDPOINT_ADDRESS=$(jq -r '.addresses.reexecutionEndpoint.proxy' "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json)
-RESERVATION_REGISTRY_ADDRESS=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json)
+REEXECUTION_ENDPOINT_ADDRESS=$(jq -r '.addresses.reexecutionEndpoint.proxy' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json)
+RESERVATION_REGISTRY_ADDRESS=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json)
 cp "$RXP_DIR"/node/.env.example "$RXP_DIR"/node/.env
 
 echo "REEXECUTION_ENDPOINT_ADDRESS: $REEXECUTION_ENDPOINT_ADDRESS"
@@ -46,7 +47,7 @@ HOST_DATA_DIR="$TMPDIR"/rxp/data
 mkdir -p "$HOST_DATA_DIR"
 echo "Created data directory: $HOST_DATA_DIR"
 
-# Set the reexecution container CPU and memory limits for local development
+# Set the reexecution container CPU and memory limits
 echo >> "$RXP_DIR"/node/.env
 echo "REEXECUTION_CONTAINER_CPU_LIMIT=1" >> "$RXP_DIR"/node/.env
 echo "REEXECUTION_CONTAINER_MEMORY_LIMIT=2" >> "$RXP_DIR"/node/.env

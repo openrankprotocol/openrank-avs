@@ -8,21 +8,7 @@ services:
             context: .
             dockerfile: node/Dockerfile.node-computer
         container_name: openrank-node-computer
-        ports:
-            - "8082:8080"
-        networks:
-            - avsnet
-        environment:
-            - RUST_LOG=info
-            - EIGEN_DA_PROXY_URL=${EIGEN_DA_PROXY_URL}
-            - CHAIN_RPC_URL=${CHAIN_RPC_URL}
-            - CHAIN_WSS_URL=${CHAIN_WSS_URL}
-            - OPENRANK_MANAGER_ADDRESS=${OPENRANK_MANAGER_ADDRESS}
-            - REEXECUTION_ENDPOINT_ADDRESS=${REEXECUTION_ENDPOINT_ADDRESS}
-            - MNEMONIC=${MNEMONIC}
-            - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-            - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-            - AWS_DEFAULT_REGION=us-west-2
+        network_mode: host
         env_file:
             - .env
         restart: unless-stopped
@@ -32,21 +18,7 @@ services:
             context: .
             dockerfile: node/Dockerfile.node-challenger
         container_name: openrank-node-challenger
-        ports:
-            - "8081:8080"
-        networks:
-            - avsnet
-        environment:
-            - RUST_LOG=info
-            - EIGEN_DA_PROXY_URL=${EIGEN_DA_PROXY_URL}
-            - CHAIN_RPC_URL=${CHAIN_RPC_URL}
-            - CHAIN_WSS_URL=${CHAIN_WSS_URL}
-            - OPENRANK_MANAGER_ADDRESS=${OPENRANK_MANAGER_ADDRESS}
-            - REEXECUTION_ENDPOINT_ADDRESS=${REEXECUTION_ENDPOINT_ADDRESS}
-            - MNEMONIC=${MNEMONIC}
-            - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-            - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-            - AWS_DEFAULT_REGION=us-west-2
+        network_mode: host
         env_file:
             - .env
         restart: unless-stopped
@@ -60,16 +32,6 @@ services:
             - "8080:8080"
         networks:
             - avsnet
-        environment:
-            - RUST_LOG=info
         env_file:
             - .env
         restart: unless-stopped
-
-    anvil:
-        ports:
-            - "8545:8545"
-        networks:
-            - avsnet
-        build:
-            dockerfile: anvil/Dockerfile

@@ -8,8 +8,9 @@ set -e
 # 2. Reserve on RxP
 # 3. Add Image to Reservation
 
+DEPLOYMENT_ENV="$1"
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-SCRIPT_DIR=$CURRENT_DIR/../script/local
+SCRIPT_DIR=$CURRENT_DIR/../script/"$DEPLOYMENT_ENV"
 RXP_DIR=$CURRENT_DIR/../contracts/lib/rxp
 IMAGESTORE_BIN_PATH=/Users/filiplazovic/go/bin/imagestore
 
@@ -25,11 +26,12 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 # build the RxP image
-cd $CURRENT_DIR/../ && docker build -f node/Dockerfile -t $IMAGE_NAME .
+cd $CURRENT_DIR/../ && docker build -f node/Dockerfile.rxp -t $IMAGE_NAME .
 
 PAYMENT_TOKEN=$(jq -r '.addresses.reservationRegistry.paymentToken' "$SCRIPT_DIR"/output/deploy_rxp_contracts_output.json)
 RESERVATION_REGISTRY_ADDR=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/output/deploy_rxp_contracts_output.json)
 REEXECUTION_ENDPOINT_ADDR=$(jq -r '.addresses.reexecutionEndpoint.proxy' "$SCRIPT_DIR"/output/deploy_rxp_contracts_output.json)
+OPENRANK_MANAGER_ADDRESS=$(jq -r '.addresses.openRankManager' "$SCRIPT_DIR"/output/deploy_or_contracts_output.json)
 DOCKER_IMAGE_ID=$(docker inspect $IMAGE_NAME | jq -r '.[0].Id')
 
 echo "OPENRANK_MANAGER_ADDRESS: $OPENRANK_MANAGER_ADDRESS"
@@ -51,4 +53,4 @@ $IMAGESTORE_BIN_PATH \
     --docker-image-id "$DOCKER_IMAGE_ID" \
     --image-id-file "$CURRENT_DIR"/image_id.txt
 
-bash "$CURRENT_DIR"/add_image_id.sh
+bash "$CURRENT_DIR"/add_image_id.sh "local"

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+DEPLOYMENT_ENV="$1"
 RXP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../contracts/lib/rxp
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../script
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -10,8 +11,8 @@ OPERATOR_ADDRESS=0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 BLS_PRIVATE_KEY=11
 RPC_URL=http://127.0.0.1:8545
 FUNDS_PK=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-DELEGATION_MANAGER_ADDRESS=$(jq -r '.addresses.delegationManager' "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json)
-STRATEGY_ADDRESS=$(jq -r '.addresses.operatorSet.mockStrategy' "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json)
+DELEGATION_MANAGER_ADDRESS=$(jq -r '.addresses.delegationManager' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json)
+STRATEGY_ADDRESS=$(jq -r '.addresses.operatorSet.mockStrategy' "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json)
 
 cleanup() {
   # set +e to avoid exiting the script if the rm commands fail
@@ -67,7 +68,7 @@ echo "" | "$HOME"/bin/eigenlayer operator register "$CURRENT_DIR"/operator_temp.
 # Restake
 echo "Restaking..."
 PARENT_DIR="$CURRENT_DIR/.."
-bash "$RXP_DIR"/scripts/acquire_and_deposit_token.sh "$RPC_URL" "$PRIVATE_KEY" "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json 3000000000000000000000 "$FUNDS_PK"
+bash "$RXP_DIR"/scripts/acquire_and_deposit_token.sh "$RPC_URL" "$PRIVATE_KEY" "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json 3000000000000000000000 "$FUNDS_PK"
 
 cast rpc anvil_mine 12000 --rpc-url "$RPC_URL"
 # Register Operator to RxP AVS
@@ -75,8 +76,8 @@ SOCKET="127.0.0.1:6666"
 echo "Registering operator to AVS with BLS private key $BLS_PRIVATE_KEY, ECDSA private key $PRIVATE_KEY, socket $SOCKET"
 $REGISTER_BIN_PATH \
   --eth-rpc-url "$RPC_URL" \
-  --eigenlayer-deployment-path "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json \
-  --avs-deployment-path "$SCRIPT_DIR"/local/output/deploy_rxp_contracts_output.json \
+  --eigenlayer-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json \
+  --avs-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json \
   --ecdsa-private-key "$PRIVATE_KEY" \
   --bls-private-key "$BLS_PRIVATE_KEY" \
   --socket "$SOCKET" \
