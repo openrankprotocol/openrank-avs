@@ -1,27 +1,5 @@
-FROM messense/rust-musl-cross:x86_64-musl AS builder
-
-WORKDIR /app
-
-COPY . .
-WORKDIR /app/node
-
-RUN sudo apt-get update && apt-get install pkg-config -y
-RUN apt-get install protobuf-compiler -y
-RUN rustup target add x86_64-unknown-linux-musl
-RUN cargo build --release --target=x86_64-unknown-linux-musl --bin openrank-node
-
-# Use a minimal alpine image for the final image
-FROM alpine:latest
-
-WORKDIR /app
-
-# Copy the binary from the builder stage
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/openrank-node .
-
-# Expose port
-EXPOSE 8080
-
-ENV RUST_LOG=info
+# Use the base runtime image from the main Dockerfile
+FROM openrank-node:latest
 
 # Set the entrypoint to run in computer mode (default)
 ENTRYPOINT ["/app/openrank-node"]

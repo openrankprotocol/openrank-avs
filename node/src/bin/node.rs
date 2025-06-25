@@ -1,3 +1,5 @@
+use core::panic;
+
 use alloy::hex::FromHex;
 use alloy::primitives::Address;
 use alloy::providers::{ProviderBuilder, WsConnect};
@@ -33,7 +35,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let eigenda_url = std::env::var("EIGEN_DA_PROXY_URL").expect("EIGEN_DA_PROXY_URL must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
-    let wss_url = std::env::var("CHAIN_WSS_URL").expect("CHAIN_WSS_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
     let rxp_address = std::env::var("REEXECUTION_ENDPOINT_ADDRESS")
@@ -41,6 +42,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mnemonic = std::env::var("MNEMONIC").expect("MNEMONIC must be set.");
     let config = from_env().region("us-west-2").load().await;
     let client = Client::new(&config);
+
+    let wss_url = if rpc_url.contains("http://") {
+        rpc_url.replace("http://", "ws://")
+    } else if rpc_url.contains("https://") {
+        rpc_url.replace("https://", "wss://")
+    } else {
+        panic!("Invalid rpc url: {}", rpc_url);
+    };
 
     println!("rpc_url: {}", rpc_url);
     println!("wss_url: {}", wss_url);

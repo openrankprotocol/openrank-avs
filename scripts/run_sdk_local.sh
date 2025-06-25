@@ -15,7 +15,6 @@ fi
 
 # Override URLs for host machine
 export CHAIN_RPC_URL=http://localhost:8545
-export CHAIN_WSS_URL=ws://localhost:8545
 export DA_PROXY_URL=http://localhost:3100
 export EIGEN_DA_PROXY_URL=http://localhost:3100
 export IMAGE_ARCHIVER_URL=http://localhost:9090
