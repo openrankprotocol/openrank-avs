@@ -1,5 +1,5 @@
 use alloy::hex::{self, FromHex};
-use alloy::primitives::{Address, FixedBytes, Uint};
+use alloy::primitives::{Address, FixedBytes};
 use alloy::providers::{Provider, ProviderBuilder};
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
@@ -7,7 +7,7 @@ use alloy::signers::local::{MnemonicBuilder, PrivateKeySigner};
 use alloy::sol_types::sol_data::Uint as SolUint;
 use alloy::sol_types::SolType;
 use alloy::transports::http::reqwest::Url;
-use alloy_rlp::{Encodable, RlpEncodable};
+use alloy_rlp::Encodable;
 use dotenv::dotenv;
 use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
@@ -15,12 +15,12 @@ use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::verification_runner::{self, VerificationRunner};
 use openrank_node::{parse_score_entries_from_tuples, parse_trust_entries_from_tuples};
+use openrank_node::{EigenDaJobDescription, OpenRankExeInput, OpenRankExeResult};
 
 use openrank_common::Domain;
 use openrank_node::sol::OpenRankManager;
 use openrank_node::{error::Error as NodeError, sol::OpenRankManager::OpenRankManagerInstance};
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
@@ -37,46 +37,6 @@ mod proto {
 
 #[macro_use]
 extern crate dotenv_codegen;
-
-#[derive(Serialize, Deserialize, Clone)]
-struct JobDescription {
-    alpha: f32,
-    trust_id: String,
-    seed_id: String,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct JobResult {
-    scores_id: String,
-    commitment: String,
-}
-
-#[derive(Debug, Default)]
-pub struct OpenRankExeInput {
-    compute_id: Uint<256, 4>,
-    job_id: u32,
-}
-
-impl OpenRankExeInput {
-    pub fn new(compute_id: Uint<256, 4>, job_id: u32) -> Self {
-        Self { compute_id, job_id }
-    }
-}
-
-#[derive(Debug, Default, RlpEncodable)]
-pub struct OpenRankExeResult {
-    result: bool,
-    meta_commitment: FixedBytes<32>,
-    sub_job_commitment: FixedBytes<32>,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EigenDaJobDescription {
-    neighbour_commitments: Vec<String>,
-    trust_data: Vec<u8>,
-    seed_data: Vec<u8>,
-    scores_data: Vec<u8>,
-}
 
 pub async fn download_meta<T: DeserializeOwned>(
     eigenda_client: &EigenDAProxyClient,

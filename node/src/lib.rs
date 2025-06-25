@@ -3,30 +3,104 @@ pub mod computer;
 pub mod error;
 pub mod sol;
 
-use crate::error::Error;
+// Re-export Error type for public API
+pub use crate::error::Error;
+use alloy::primitives::{FixedBytes, Uint};
+use alloy_rlp::RlpEncodable;
 use csv::StringRecord;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use aws_sdk_s3::Client as S3Client;
 use std::fs::File;
 use std::io::Write;
 
+/// Common job description used across computer, challenger, and rxp modules
+#[derive(Serialize, Deserialize, Clone)]
+pub struct JobDescription {
+    pub alpha: f32,
+    pub trust_id: String,
+    pub seed_id: String,
+}
+
+/// Common job result used across computer, challenger, and rxp modules
+#[derive(Serialize, Deserialize, Clone)]
+pub struct JobResult {
+    pub scores_id: String,
+    pub commitment: String,
+}
+
+impl JobResult {
+    pub fn new(scores_id: String, commitment: String) -> Self {
+        Self {
+            scores_id,
+            commitment,
+        }
+    }
+}
+
+/// EigenDA job description used in challenger and rxp modules
+#[derive(Serialize, Deserialize)]
+pub struct EigenDaJobDescription {
+    pub neighbour_commitments: Vec<String>,
+    pub trust_data: Vec<u8>,
+    pub seed_data: Vec<u8>,
+    pub scores_data: Vec<u8>,
+}
+
+impl EigenDaJobDescription {
+    pub fn new(
+        neighbour_commitments: Vec<String>,
+        trust_data: Vec<u8>,
+        seed_data: Vec<u8>,
+        scores_data: Vec<u8>,
+    ) -> Self {
+        Self {
+            neighbour_commitments,
+            trust_data,
+            seed_data,
+            scores_data,
+        }
+    }
+}
+
+/// OpenRank execution input used in rxp module
+#[derive(Debug, Default)]
+pub struct OpenRankExeInput {
+    pub compute_id: Uint<256, 4>,
+    pub job_id: u32,
+}
+
+impl OpenRankExeInput {
+    pub fn new(compute_id: Uint<256, 4>, job_id: u32) -> Self {
+        Self { compute_id, job_id }
+    }
+}
+
+/// OpenRank execution result used in rxp module
+#[derive(Debug, Default, RlpEncodable)]
+pub struct OpenRankExeResult {
+    pub result: bool,
+    pub meta_commitment: FixedBytes<32>,
+    pub sub_job_commitment: FixedBytes<32>,
+}
+
 /// Creates CSV data from score entries and computes Keccak256 hash
-/// 
+///
 /// This function takes a collection of score entries, converts them to CSV format
 /// with headers "i,v" (id, value), and computes a Keccak256 hash of the CSV data.
-/// 
+///
 /// # Arguments
 /// * `scores` - An iterator over items that implement ScoreEntry-like interface (have id() and value() methods)
-/// 
+///
 /// # Returns
 /// * `Result<(Vec<u8>, Vec<u8>), Error>` - Tuple of (CSV bytes, hash bytes) or an error
-/// 
+///
 /// # Examples
 /// ```
 /// use openrank_common::tx::trust::ScoreEntry;
 /// use openrank_node::create_csv_and_hash_from_scores;
-/// 
+///
 /// let scores = vec![
 ///     ScoreEntry::new("alice".to_string(), 0.95),
 ///     ScoreEntry::new("bob".to_string(), 0.87),
@@ -39,49 +113,51 @@ where
     I: IntoIterator<Item = openrank_common::tx::trust::ScoreEntry>,
 {
     use sha3::{Digest, Keccak256};
-    
+
     let scores_vec = Vec::new();
     let mut wtr = csv::Writer::from_writer(scores_vec);
     wtr.write_record(&["i", "v"]).map_err(Error::CsvError)?;
-    
+
     for score in scores {
         wtr.write_record(&[score.id(), score.value().to_string().as_str()])
             .map_err(Error::CsvError)?;
     }
-    
-    let csv_bytes = wtr.into_inner()
+
+    let csv_bytes = wtr
+        .into_inner()
         .map_err(|e| Error::FileError(format!("Failed to get CSV writer inner data: {}", e)))?;
-    
+
     let mut hasher = Keccak256::new();
-    hasher.write_all(&csv_bytes)
+    hasher
+        .write_all(&csv_bytes)
         .map_err(|e| Error::FileError(format!("Failed to write to hasher: {}", e)))?;
     let hash = hasher.finalize().to_vec();
-    
+
     Ok((csv_bytes, hash))
 }
 
 /// Creates CSV file from score entries and computes Keccak256 hash
-/// 
+///
 /// This function takes a collection of score entries, converts them to CSV format
 /// with headers "i,v" (id, value), saves the CSV data to a file, and computes a Keccak256 hash.
-/// 
+///
 /// This is an alternative to `create_csv_and_hash_from_scores` when you want to save
 /// the CSV data to disk instead of keeping it in memory.
-/// 
+///
 /// # Arguments
 /// * `scores` - An iterator over items that implement ScoreEntry-like interface (have id() and value() methods)
 /// * `file_path` - The path where the CSV file should be saved
-/// 
+///
 /// # Returns
 /// * `Result<Vec<u8>, Error>` - The hash bytes or an error
-/// 
+///
 /// # Usage Examples
-/// 
+///
 /// ## Save scores to file for debugging/verification:
 /// ```no_run
 /// use openrank_common::tx::trust::ScoreEntry;
 /// use openrank_node::create_csv_file_and_hash_from_scores;
-/// 
+///
 /// let scores = vec![
 ///     ScoreEntry::new("alice".to_string(), 0.95),
 ///     ScoreEntry::new("bob".to_string(), 0.87),
@@ -89,24 +165,24 @@ where
 /// let hash = create_csv_file_and_hash_from_scores(scores, "./scores.csv").unwrap();
 /// let hash_hex = alloy::hex::encode(hash);
 /// ```
-/// 
+///
 /// ## Use with create_csv_and_hash_from_scores for different workflows:
 /// ```no_run
 /// use openrank_common::tx::trust::ScoreEntry;
 /// use openrank_node::{create_csv_and_hash_from_scores, create_csv_file_and_hash_from_scores};
-/// 
+///
 /// let scores = vec![
 ///     ScoreEntry::new("alice".to_string(), 0.95),
 ///     ScoreEntry::new("bob".to_string(), 0.87),
 /// ];
-/// 
+///
 /// // For uploading to S3 (memory-efficient):
 /// let (csv_bytes, hash1) = create_csv_and_hash_from_scores(scores.clone()).unwrap();
 /// // upload csv_bytes to S3...
-/// 
+///
 /// // For local debugging (saves to disk):
 /// let hash2 = create_csv_file_and_hash_from_scores(scores, "./debug_scores.csv").unwrap();
-/// 
+///
 /// // Both hashes should be identical
 /// assert_eq!(hash1, hash2);
 /// ```
@@ -116,42 +192,48 @@ where
 {
     use sha3::{Digest, Keccak256};
     use std::fs::File;
-    
+
     let file = File::create(file_path)
         .map_err(|e| Error::FileError(format!("Failed to create file {}: {}", file_path, e)))?;
-    
+
     let mut wtr = csv::Writer::from_writer(file);
     wtr.write_record(&["i", "v"]).map_err(Error::CsvError)?;
-    
+
     let mut csv_bytes = Vec::new();
     let mut temp_wtr = csv::Writer::from_writer(&mut csv_bytes);
-    temp_wtr.write_record(&["i", "v"]).map_err(Error::CsvError)?;
-    
+    temp_wtr
+        .write_record(&["i", "v"])
+        .map_err(Error::CsvError)?;
+
     for score in scores {
         let id = score.id();
         let value_str = score.value().to_string();
-        
+
         // Write to file
         wtr.write_record(&[id, &value_str])
             .map_err(Error::CsvError)?;
-        
+
         // Write to temp buffer for hashing
-        temp_wtr.write_record(&[id, &value_str])
+        temp_wtr
+            .write_record(&[id, &value_str])
             .map_err(Error::CsvError)?;
     }
-    
+
     // Flush and close file writer
-    wtr.flush().map_err(|e| Error::FileError(format!("Failed to flush CSV writer: {}", e)))?;
-    
+    wtr.flush()
+        .map_err(|e| Error::FileError(format!("Failed to flush CSV writer: {}", e)))?;
+
     // Get bytes for hashing
-    let csv_bytes = temp_wtr.into_inner()
+    let csv_bytes = temp_wtr
+        .into_inner()
         .map_err(|e| Error::FileError(format!("Failed to get CSV writer inner data: {}", e)))?;
-    
+
     let mut hasher = Keccak256::new();
-    hasher.write_all(&csv_bytes)
+    hasher
+        .write_all(&csv_bytes)
         .map_err(|e| Error::FileError(format!("Failed to write to hasher: {}", e)))?;
     let hash = hasher.finalize().to_vec();
-    
+
     Ok(hash)
 }
 
@@ -173,7 +255,7 @@ where
 /// use aws_config;
 /// use aws_sdk_s3::Client;
 /// use openrank_node::download_s3_object_to_file;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -225,7 +307,7 @@ pub async fn download_s3_object_to_file(
 /// use aws_config;
 /// use aws_sdk_s3::Client;
 /// use openrank_node::download_s3_object_as_bytes;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -276,7 +358,7 @@ pub async fn download_s3_object_as_bytes(
 /// use aws_sdk_s3::Client;
 /// use openrank_common::tx::trust::TrustEntry;
 /// use openrank_node::download_and_parse_csv_from_s3;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -401,7 +483,7 @@ where
 /// use aws_config;
 /// use aws_sdk_s3::Client;
 /// use openrank_node::upload_bytes_to_s3;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -450,7 +532,7 @@ pub async fn upload_bytes_to_s3(
 /// use aws_config;
 /// use aws_sdk_s3::Client;
 /// use openrank_node::upload_file_to_s3;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -501,7 +583,7 @@ pub async fn upload_file_to_s3(
 /// # let s3_client = S3Client::new(&aws_config::load_from_env().await);
 /// # let bucket_name = "my-bucket";
 /// use openrank_node::upload_file_to_s3_streaming;
-/// 
+///
 /// // Upload a large CSV file without loading it entirely into memory
 /// upload_file_to_s3_streaming(&s3_client, bucket_name, "scores/large_file.csv", "./scores/large_file.csv").await?;
 /// # Ok(())
@@ -517,7 +599,8 @@ pub async fn upload_file_to_s3_streaming(
     use tokio::fs::File;
 
     // Open the file asynchronously
-    let file = File::open(file_path).await
+    let file = File::open(file_path)
+        .await
         .map_err(|e| Error::FileError(format!("Failed to open file {}: {}", file_path, e)))?;
 
     // Create a ByteStream from the file
@@ -525,7 +608,12 @@ pub async fn upload_file_to_s3_streaming(
         .file(file)
         .build()
         .await
-        .map_err(|e| Error::FileError(format!("Failed to create stream from file {}: {}", file_path, e)))?;
+        .map_err(|e| {
+            Error::FileError(format!(
+                "Failed to create stream from file {}: {}",
+                file_path, e
+            ))
+        })?;
 
     // Upload using the streaming body
     s3_client
@@ -557,7 +645,7 @@ pub async fn upload_file_to_s3_streaming(
 /// use aws_config;
 /// use aws_sdk_s3::Client;
 /// use openrank_node::s3_object_exists;
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -681,13 +769,13 @@ pub async fn download_scores_data_to_file(
 /// use aws_sdk_s3::Client;
 /// use openrank_node::download_json_metadata_from_s3;
 /// use serde::Deserialize;
-/// 
+///
 /// #[derive(Deserialize)]
 /// struct MyMetadata {
 ///     name: String,
 ///     value: i32,
 /// }
-/// 
+///
 /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
 /// let config = aws_config::from_env().region("us-west-2").load().await;
 /// let s3_client = Client::new(&config);
@@ -816,16 +904,16 @@ where
 ///     .send()
 ///     .await
 ///     .map_err(|e| NodeError::AwsError(e.into()))?;
-/// 
+///
 /// let mut trust_file = File::create(format!("./trust/{}", trust_id))
 ///     .map_err(|e| NodeError::FileError(format!("Failed to create file: {e:}")))?;
-/// 
+///
 /// while let Some(bytes) = trust_res.body.next().await {
 ///     trust_file
 ///         .write(&bytes.unwrap())
 ///         .map_err(|e| NodeError::FileError(format!("Failed to write to file: {e:}")))?;
 /// }
-/// 
+///
 /// NEW PATTERN:
 /// download_trust_data_to_file(&s3_client, bucket_name, &trust_id, &format!("./trust/{}", trust_id)).await?;
 /// ```
@@ -895,7 +983,7 @@ where
 /// # Examples
 /// ```
 /// use openrank_node::parse_csv_bytes_no_headers;
-/// 
+///
 /// let csv_data = b"alice,bob,0.8\nbob,charlie,0.9";
 /// let tuples: Vec<(String, String, f32)> = parse_csv_bytes_no_headers(csv_data).unwrap();
 /// ```
@@ -934,7 +1022,7 @@ where
 /// # Examples
 /// ```
 /// use openrank_node::parse_csv_tuples;
-/// 
+///
 /// // Parse into (String, String, f32) tuples
 /// let csv_data = b"alice,bob,0.8\nbob,charlie,0.9";
 /// let tuples: Vec<(String, String, f32)> = parse_csv_tuples(csv_data).unwrap();
@@ -1279,19 +1367,19 @@ mod tests {
         assert!(result.is_ok());
 
         let (csv_data, hash) = result.unwrap();
-        
+
         // Check that CSV data is not empty
         assert!(!csv_data.is_empty());
-        
+
         // Check that hash is 32 bytes (Keccak256)
         assert_eq!(hash.len(), 32);
-        
+
         // Check that CSV contains expected content
         let csv_string = String::from_utf8(csv_data).unwrap();
         assert!(csv_string.contains("i,v"));
         assert!(csv_string.contains("alice,0.95"));
         assert!(csv_string.contains("bob,0.87"));
-        
+
         // Hash should be deterministic
         let scores2 = vec![
             ScoreEntry::new("alice".to_string(), 0.95),
@@ -1305,14 +1393,14 @@ mod tests {
     fn test_create_csv_file_and_hash_from_scores() {
         use std::fs;
         use std::path::Path;
-        
+
         let scores = vec![
             ScoreEntry::new("alice".to_string(), 0.95),
             ScoreEntry::new("bob".to_string(), 0.87),
         ];
 
         let file_path = "./test_scores.csv";
-        
+
         // Clean up any existing test file
         if Path::new(file_path).exists() {
             fs::remove_file(file_path).ok();
@@ -1322,17 +1410,17 @@ mod tests {
         assert!(result.is_ok());
 
         let hash = result.unwrap();
-        
+
         // Check that hash is 32 bytes (Keccak256)
         assert_eq!(hash.len(), 32);
-        
+
         // Check that file was created and contains expected content
         assert!(Path::new(file_path).exists());
         let file_content = fs::read_to_string(file_path).unwrap();
         assert!(file_content.contains("i,v"));
         assert!(file_content.contains("alice,0.95"));
         assert!(file_content.contains("bob,0.87"));
-        
+
         // Hash should be deterministic - test with same data
         let scores2 = vec![
             ScoreEntry::new("alice".to_string(), 0.95),
@@ -1341,7 +1429,7 @@ mod tests {
         let file_path2 = "./test_scores2.csv";
         let hash2 = create_csv_file_and_hash_from_scores(scores2, file_path2).unwrap();
         assert_eq!(hash, hash2);
-        
+
         // Clean up test files
         fs::remove_file(file_path).ok();
         fs::remove_file(file_path2).ok();

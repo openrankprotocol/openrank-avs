@@ -1,5 +1,6 @@
 use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{MetaComputeRequestEvent, OpenRankManagerInstance};
+use crate::{JobDescription, JobResult};
 use alloy::eips::BlockNumberOrTag;
 use alloy::hex::{self, ToHexExt};
 use alloy::primitives::FixedBytes;
@@ -19,7 +20,7 @@ use openrank_common::runners::compute_runner::{self, ComputeRunner};
 use openrank_common::Domain;
 
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sha3::{Digest, Keccak256};
 use std::collections::HashMap;
 use std::fs::File;
@@ -29,28 +30,6 @@ use std::time::Instant;
 use tokio::fs::create_dir_all;
 use tokio::select;
 use tracing::{debug, error, info};
-
-#[derive(Serialize, Deserialize, Clone)]
-struct JobDescription {
-    alpha: f32,
-    trust_id: String,
-    seed_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JobResult {
-    scores_id: String,
-    commitment: String,
-}
-
-impl JobResult {
-    pub fn new(scores_id: String, commitment: String) -> Self {
-        Self {
-            scores_id,
-            commitment,
-        }
-    }
-}
 
 pub async fn upload_meta<T: Serialize>(
     client: &Client,

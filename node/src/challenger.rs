@@ -3,6 +3,7 @@ use crate::sol::OpenRankManager::{
     MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
 use crate::sol::ReexecutionEndpoint::ReexecutionEndpointInstance;
+use crate::{EigenDaJobDescription, JobDescription, JobResult};
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
 use alloy::primitives::{Bytes, Uint};
@@ -22,7 +23,6 @@ use openrank_common::runners::verification_runner::{self, VerificationRunner};
 use openrank_common::Domain;
 use rand::Rng;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 use sha3::Keccak256;
 use std::collections::HashMap;
 use std::fs::File;
@@ -30,43 +30,6 @@ use std::fs::File;
 use tokio::fs::create_dir_all;
 use tokio::select;
 use tracing::{debug, error, info};
-
-#[derive(Serialize, Deserialize)]
-struct JobDescription {
-    alpha: f32,
-    trust_id: String,
-    seed_id: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct JobResult {
-    scores_id: String,
-    commitment: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct EigenDaJobDescription {
-    neighbour_commitments: Vec<String>,
-    trust_data: Vec<u8>,
-    seed_data: Vec<u8>,
-    scores_data: Vec<u8>,
-}
-
-impl EigenDaJobDescription {
-    pub fn new(
-        neighbour_commitments: Vec<String>,
-        trust_data: Vec<u8>,
-        seed_data: Vec<u8>,
-        scores_data: Vec<u8>,
-    ) -> Self {
-        Self {
-            neighbour_commitments,
-            trust_data,
-            seed_data,
-            scores_data,
-        }
-    }
-}
 
 pub async fn download_meta<T: DeserializeOwned>(
     client: &Client,
