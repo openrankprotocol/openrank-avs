@@ -5,7 +5,6 @@ set -e
 cd "$(dirname "$0")/.."
 
 DEPLOYMENT_ENV="$1"
-cp .env."$DEPLOYMENT_ENV" .env
 # Load contract addresses from JSON files or use environment variables
 SCRIPT_DIR="./script/"$DEPLOYMENT_ENV""
 
@@ -14,9 +13,17 @@ OPENRANK_MANAGER_ADDRESS=$(jq -r '.addresses.openRankManager' "$SCRIPT_DIR/outpu
 REEXECUTION_ENDPOINT_ADDRESS=$(jq -r '.addresses.reexecutionEndpoint.proxy' "$SCRIPT_DIR/output/deploy_rxp_contracts_output.json")
 IMAGE_ID=$([ -f "./scripts/image_id.txt" ] && cat "./scripts/image_id.txt" || echo "0")
 
-echo "OPENRANK_MANAGER_ADDRESS=$OPENRANK_MANAGER_ADDRESS" >> .env
-echo "REEXECUTION_ENDPOINT_ADDRESS=$REEXECUTION_ENDPOINT_ADDRESS" >> .env
-echo "IMAGE_ID=$IMAGE_ID" >> .env
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    # Linux
+    sed -i "s/OPENRANK_MANAGER_ADDRESS=.*/OPENRANK_MANAGER_ADDRESS=$OPENRANK_MANAGER_ADDRESS/" .env
+    sed -i "s/REEXECUTION_ENDPOINT_ADDRESS=.*/REEXECUTION_ENDPOINT_ADDRESS=$REEXECUTION_ENDPOINT_ADDRESS/" .env
+    sed -i "s/IMAGE_ID=.*/IMAGE_ID=$IMAGE_ID/" .env
+else
+    # macOS
+    sed -i '' "s/OPENRANK_MANAGER_ADDRESS=.*/OPENRANK_MANAGER_ADDRESS=$OPENRANK_MANAGER_ADDRESS/" .env
+    sed -i '' "s/REEXECUTION_ENDPOINT_ADDRESS=.*/REEXECUTION_ENDPOINT_ADDRESS=$REEXECUTION_ENDPOINT_ADDRESS/" .env
+    sed -i '' "s/IMAGE_ID=.*/IMAGE_ID=$IMAGE_ID/" .env
+fi
 
 echo "OPENRANK_MANAGER_ADDRESS: $OPENRANK_MANAGER_ADDRESS"
 echo "REEXECUTION_ENDPOINT_ADDRESS: $REEXECUTION_ENDPOINT_ADDRESS"

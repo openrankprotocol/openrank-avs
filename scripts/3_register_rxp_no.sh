@@ -53,18 +53,23 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     # macOS
     sed -i '' "s/address: <OPERATOR_ADDRESS>/address: $OPERATOR_ADDRESS/" "$CURRENT_DIR"/operator_temp.yaml
     sed -i '' "s|private_key_store_path: <PATH_TO_KEY>|private_key_store_path: $HOME/.eigenlayer/operator_keys/oprtemp.ecdsa.key.json|" "$CURRENT_DIR"/operator_temp.yaml
-    sed -i '' "s|eth_rpc_url: <ETH_RPC_URL>|eth_rpc_url: $RPC_URL|" "$CURRENT_DIR"/operator_temp.yaml
+    sed -i '' "s|eth_rpc_url: <ETH_RPC_URL>|eth_rpc_url: $CHAIN_RPC_URL|" "$CURRENT_DIR"/operator_temp.yaml
     sed -i '' "s|el_delegation_manager_address: <DELEGATION_MANAGER_ADDRESS>|el_delegation_manager_address: $DELEGATION_MANAGER_ADDRESS|" "$CURRENT_DIR"/operator_temp.yaml
 else
     # Linux and others
     sed -i "s/address: <OPERATOR_ADDRESS>/address: $OPERATOR_ADDRESS/" "$CURRENT_DIR"/operator_temp.yaml
     sed -i "s|private_key_store_path: <PATH_TO_KEY>|private_key_store_path: $HOME/.eigenlayer/operator_keys/oprtemp.ecdsa.key.json|" "$CURRENT_DIR"/operator_temp.yaml
-    sed -i "s|eth_rpc_url: <ETH_RPC_URL>|eth_rpc_url: $RPC_URL|" "$CURRENT_DIR"/operator_temp.yaml
+    sed -i "s|eth_rpc_url: <ETH_RPC_URL>|eth_rpc_url: $CHAIN_RPC_URL|" "$CURRENT_DIR"/operator_temp.yaml
     sed -i "s|el_delegation_manager_address: <DELEGATION_MANAGER_ADDRESS>|el_delegation_manager_address: $DELEGATION_MANAGER_ADDRESS|" "$CURRENT_DIR"/operator_temp.yaml
 fi
 
 # Send funds to the operator
-cast send "$OPERATOR_ADDRESS" --value 0.2ether --private-key "$FUNDS_PK" --rpc-url "$RPC_URL"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    cast send "$OPERATOR_ADDRESS" --value 0.2ether --private-key "$FUNDS_PK" --rpc-url "$RPC_URL"
+else
+    cast send "$OPERATOR_ADDRESS" --value 0.2ether --private-key "$FUNDS_PK" --rpc-url "$CHAIN_RPC_URL"
+fi
 
 # Register the operator
 echo "Registering operator..."
@@ -73,26 +78,50 @@ echo "" | "$HOME"/bin/eigenlayer operator register "$CURRENT_DIR"/operator_temp.
 # Restake
 echo "Restaking..."
 PARENT_DIR="$CURRENT_DIR/.."
-bash "$RXP_DIR"/scripts/acquire_and_deposit_token.sh "$RPC_URL" "$PRIVATE_KEY" "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json 3000000000000000000000 "$FUNDS_PK"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    bash "$RXP_DIR"/scripts/acquire_and_deposit_token.sh "$RPC_URL" "$PRIVATE_KEY" "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json 3000000000000000000000 "$FUNDS_PK"
+else
+    bash "$RXP_DIR"/scripts/acquire_and_deposit_token.sh "$CHAIN_RPC_URL" "$PRIVATE_KEY" "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json "$SCRIPT_DIR"/local/output/deploy_eigenlayer_core_output.json 3000000000000000000000 "$FUNDS_PK"
+fi
 
-cast rpc anvil_mine 12000 --rpc-url "$RPC_URL"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    cast rpc anvil_mine 12000 --rpc-url "$RPC_URL"
+fi
+
 # Register Operator to RxP AVS
 SOCKET="127.0.0.1:6666"
 echo "Registering operator to AVS with BLS private key $BLS_PRIVATE_KEY, ECDSA private key $PRIVATE_KEY, socket $SOCKET"
-$REGISTER_BIN_PATH \
-  --eth-rpc-url "$RPC_URL" \
-  --eigenlayer-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json \
-  --avs-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json \
-  --ecdsa-private-key "$PRIVATE_KEY" \
-  --bls-private-key "$BLS_PRIVATE_KEY" \
-  --socket "$SOCKET" \
-  --strategy-address "$STRATEGY_ADDRESS"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    $REGISTER_BIN_PATH \
+      --eth-rpc-url "$RPC_URL" \
+      --eigenlayer-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json \
+      --avs-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json \
+      --ecdsa-private-key "$PRIVATE_KEY" \
+      --bls-private-key "$BLS_PRIVATE_KEY" \
+      --socket "$SOCKET" \
+      --strategy-address "$STRATEGY_ADDRESS"
+else
+    $REGISTER_BIN_PATH \
+      --eth-rpc-url "$CHAIN_RPC_URL" \
+      --eigenlayer-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_eigenlayer_core_output.json \
+      --avs-deployment-path "$SCRIPT_DIR"/"$DEPLOYMENT_ENV"/output/deploy_rxp_contracts_output.json \
+      --ecdsa-private-key "$PRIVATE_KEY" \
+      --bls-private-key "$BLS_PRIVATE_KEY" \
+      --socket "$SOCKET" \
+      --strategy-address "$STRATEGY_ADDRESS"
+fi
 
-echo "Current block number:"
-cast block-number --rpc-url "$RPC_URL"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    echo "Current block number:"
+    cast block-number --rpc-url "$RPC_URL"
 
-echo "Fast-forward 11 blocks"
-cast rpc anvil_mine 11 --rpc-url "$RPC_URL"
+    echo "Fast-forward 11 blocks"
+    cast rpc anvil_mine 11 --rpc-url "$RPC_URL"
 
-echo "Current block number:"
-cast block-number --rpc-url "$RPC_URL"
+    echo "Current block number:"
+    cast block-number --rpc-url "$RPC_URL"
+fi

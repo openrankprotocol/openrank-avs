@@ -38,17 +38,37 @@ echo "REEXECUTION_ENDPOINT_ADDR: $REEXECUTION_ENDPOINT_ADDR"
 echo "IMAGE_NAME: $IMAGE_NAME"
 
 # approve the reservation registry to spend the token
-cast send --rpc-url $RPC_URL --private-key $PRIVATE_KEY $PAYMENT_TOKEN "approve(address,uint256)" "$RESERVATION_REGISTRY_ADDR" $(cast max-uint)
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    cast send --rpc-url $RPC_URL --private-key $PRIVATE_KEY $PAYMENT_TOKEN "approve(address,uint256)" "$RESERVATION_REGISTRY_ADDR" $(cast max-uint)
+else
+    cast send --rpc-url $CHAIN_RPC_URL --private-key $PRIVATE_KEY $PAYMENT_TOKEN "approve(address,uint256)" "$RESERVATION_REGISTRY_ADDR" $(cast max-uint)
+fi
 
-$IMAGESTORE_BIN_PATH \
-    --image-name $IMAGE_NAME \
-    --da-proxy-url $DA_URL \
-    --reservation-registry-address "$RESERVATION_REGISTRY_ADDR" \
-    --reexecution-endpoint-address "$REEXECUTION_ENDPOINT_ADDR" \
-    --private-key $IMAGESTORE_PRIVATE_KEY \
-    --avs-address "$OPENRANK_MANAGER_ADDRESS" \
-    --eth-rpc-url $RPC_URL \
-    --docker-image-id "$DOCKER_IMAGE_ID" \
-    --image-id-file "$CURRENT_DIR"/image_id.txt
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    DA_URL=http://127.0.0.1:3100
+    $IMAGESTORE_BIN_PATH \
+        --image-name $IMAGE_NAME \
+        --da-proxy-url $DA_URL \
+        --reservation-registry-address "$RESERVATION_REGISTRY_ADDR" \
+        --reexecution-endpoint-address "$REEXECUTION_ENDPOINT_ADDR" \
+        --private-key $IMAGESTORE_PRIVATE_KEY \
+        --avs-address "$OPENRANK_MANAGER_ADDRESS" \
+        --eth-rpc-url $RPC_URL \
+        --docker-image-id "$DOCKER_IMAGE_ID" \
+        --image-id-file "$CURRENT_DIR"/image_id.txt
+else
+    $IMAGESTORE_BIN_PATH \
+        --image-name $IMAGE_NAME \
+        --da-proxy-url $EIGEN_DA_PROXY_URL \
+        --reservation-registry-address "$RESERVATION_REGISTRY_ADDR" \
+        --reexecution-endpoint-address "$REEXECUTION_ENDPOINT_ADDR" \
+        --private-key $IMAGESTORE_PRIVATE_KEY \
+        --avs-address "$OPENRANK_MANAGER_ADDRESS" \
+        --eth-rpc-url $CHAIN_RPC_URL \
+        --docker-image-id "$DOCKER_IMAGE_ID" \
+        --image-id-file "$CURRENT_DIR"/image_id.txt
+fi
 
-bash "$CURRENT_DIR"/add_image_id.sh "local"
+bash "$CURRENT_DIR"/add_image_id.sh $DEPLOYMENT_ENV

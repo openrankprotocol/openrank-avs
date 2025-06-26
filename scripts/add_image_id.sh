@@ -33,4 +33,9 @@ else
 fi
 
 cd "$CURRENT_DIR/.."
-forge script contracts/script/AddImageId.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    RPC_URL=http://127.0.0.1:8545
+    forge script contracts/script/AddImageId.s.sol --private-keys $PRIVATE_KEY --rpc-url $RPC_URL --broadcast --tx-origin $ADDRESS -vvv
+else
+    forge script contracts/script/AddImageId.s.sol --private-keys $PRIVATE_KEY --rpc-url $CHAIN_RPC_URL --broadcast --tx-origin $ADDRESS -vvv
+fi
