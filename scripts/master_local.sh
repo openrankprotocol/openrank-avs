@@ -21,8 +21,10 @@ echo "Step 2: Running RxP node..."
 bash "$CURRENT_DIR/2_run_rxp_node.sh" "$DEPLOYMENT_ENV"
 
 # Step 3: Register RxP node
-echo "Step 3: Registering RxP node..."
-bash "$CURRENT_DIR/3_register_rxp_no.sh" "$DEPLOYMENT_ENV"
+if [ "$DEPLOYMENT_ENV" = "local" ]; then
+    echo "Step 3: Registering RxP node..."
+    bash "$CURRENT_DIR/3_register_rxp_no.sh" "$DEPLOYMENT_ENV"
+fi
 
 # Step 4: Add image
 echo "Step 4: Adding image..."

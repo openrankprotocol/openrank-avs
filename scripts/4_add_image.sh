@@ -14,17 +14,18 @@ SCRIPT_DIR=$CURRENT_DIR/../script/"$DEPLOYMENT_ENV"
 RXP_DIR=$CURRENT_DIR/../contracts/lib/rxp
 IMAGESTORE_BIN_PATH=/Users/filiplazovic/go/bin/imagestore
 
-IMAGE_NAME=openrank-rxp
-IMAGESTORE_PRIVATE_KEY=ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
-
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then
     echo "Loading environment variables from .env file"
     source $ENV_FILE
 fi
 
+PREFIX=0x
+IMAGESTORE_PRIVATE_KEY=${PRIVATE_KEY#"$PREFIX"}
+IMAGE_NAME=openrank-rxp
+
 # build the RxP image
-cd $CURRENT_DIR/../ && docker build -f node/Dockerfile.rxp -t $IMAGE_NAME .
+docker build -f $CURRENT_DIR/../node/Dockerfile.rxp -t $IMAGE_NAME .
 
 PAYMENT_TOKEN=$(jq -r '.addresses.reservationRegistry.paymentToken' "$SCRIPT_DIR"/output/deploy_rxp_contracts_output.json)
 RESERVATION_REGISTRY_ADDR=$(jq -r '.addresses.reservationRegistry.proxy' "$SCRIPT_DIR"/output/deploy_rxp_contracts_output.json)
