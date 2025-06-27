@@ -1,0 +1,41 @@
+{
+  "addresses": {
+    "allocationManager": "0x68cDC0a564F4Ed8F3177A9b4C3bf51A736560139",
+    "allocationManagerImplementation": "0xFE81bFDCc480DF0464B19B3a307D76716D75Ca19",
+    "avsDirectory": "0x3D4773481c42530Bd5af956e8666049FDa275aAA",
+    "avsDirectoryImplementation": "0x7ED239e5CE4b7222F8a6f3394abE369171b017a7",
+    "baseStrategyImplementation": "0x30DD26C5f3C483288f34F1A85AA827A299a7B683",
+    "delegationManager": "0x6Eb9b17B6037A080b0698C8a40DF0B6ee2b84f4d",
+    "delegationManagerImplementation": "0xfb3b8E1241Eec6D8Cb29cB470366dB4a76F264fD",
+    "eigenLayerPauserReg": "0x2A238F91610E141357F25246fa47bB97f70D3240",
+    "eigenLayerProxyAdmin": "0x81B28f336efA44fA2d8973EB33eab212eCA86BC6",
+    "eigenPodBeacon": "0x91196a50275b2C37b87acECf67CFB20a7d40f59d",
+    "eigenPodImplementation": "0xF443d83bAb1aB46c75bfa2ABC317744F337adE8B",
+    "eigenPodManager": "0xdB375224BACaacC895E64eaa57A4eBeb68D6A553",
+    "eigenPodManagerImplementation": "0x6c42b2E2AF5f0f74DD4d7373213Da0C21f5daE41",
+    "emptyContract": "0xc699A0d337ae0a8C95A994256c0B3922209ba4ef",
+    "ethPOSDepositContract": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+    "numStrategiesDeployed": 0,
+    "permissionController": "0xD3Bf2C31E3836dcF4a98c5fD336fb2b1fF796FAC",
+    "permissionControllerImplementation": "0x60CDAefD571f155804eF03D1B2496ceE31d5dAE1",
+    "rewardsCoordinator": "0x6e697df01c6c264f0e0d2bEe783106D773D356C8",
+    "rewardsCoordinatorImplementation": "0x4a264170B4eA8cf856112B75200049FC8310c02C",
+    "strategyBeacon": "0x2C9d55E88d029050687E11F89c5C2719ADBdD111",
+    "strategyBeaconImplementation": "0x30DD26C5f3C483288f34F1A85AA827A299a7B683",
+    "strategyFactory": "0xad4f02cB6a70c1f26a64e633ad9303a5cF03aa86",
+    "strategyFactoryImplementation": "0xcF2804092DC344702B4A59882cA208920e63f446",
+    "strategyManager": "0xe87f38af1D7f3A335DE6bC713b1B28d96B57f58b",
+    "strategyManagerImplementation": "0x2EaB9ACeAA2E998E6dD818Ce2C2ca7b94EdAA256"
+  },
+  "chainInfo": {
+    "chainId": 17000,
+    "deploymentBlock": 4072991
+  },
+  "parameters": {
+    "communityMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "executorMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "operationsMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "pauserMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "timelock": "0x0000000000000000000000000000000000000000"
+  }
+}

@@ -53,20 +53,15 @@ contract DeployOpenRank is Script {
     }
 
     function _deployCore(bool broadcast, address prankAddress) internal {
-        string memory configFile = "deploy_eigenlayer_core.config.json";
-        string memory eigenlayerConfigPath = string.concat("script/holesky/config/", configFile);
+        string memory eigenlayerConfigPath = "script/holesky/config/deploy_eigenlayer_core.config.json";
         coreConfig = coreDeployer._readEigenLayerConfigJSON(eigenlayerConfigPath);
         coreDeployment = coreDeployer.run(coreConfig, broadcast, prankAddress);
     }
 
     function _deployRxp(bool broadcast, address prankAddress) internal {
-        string memory rxpConfigPath = string.concat("script/", "holesky", "/config/deploy_rxp_contracts.config.json");
-        string memory eigenlayerContractsPath =
-            string.concat("script/", "holesky", "/output/deploy_eigenlayer_core_output.json");
-        string memory outputPath = string.concat("script/", "holesky", "/output/deploy_rxp_contracts_output.json");
-
+        string memory rxpConfigPath = "script/holesky/config/deploy_rxp_contracts.config.json";
         rxpConfig = rxpDeployer._readRxpConfigJSON(rxpConfigPath);
-        rxpDeployment = rxpDeployer.run(rxpConfig, coreDeployment, broadcast, prankAddress);
+        rxpDeployment = rxpDeployer.run(rxpConfig, coreDeployment, broadcast, prankAddress, "holesky");
     }
 
     function _deployOrManager() internal {
@@ -86,14 +81,7 @@ contract DeployOpenRank is Script {
             selector: IReservationRegistry.addImage.selector
         });
 
-        // uint256 fee = reservationRegistry.getReservationTransferAmount(IReservationRegistry.ResourceConfigType.CPU);
         IERC20 paymentToken = reservationRegistry.paymentToken();
-        // paymentToken.approve(address(reservationRegistry), fee);
-        // uint256 reservationId = reservationRegistry.reserve(address(orManager), IReservationRegistry.ResourceConfigType.CPU, fee);
-        // bytes[] memory imageBytes = new bytes[](0);
-        // uint32 imageId = reservationRegistry.addImage(reservationId, imageBytes);
-        // orManager.setImageId(imageId);
-
         paymentToken.transfer(address(orManager), 100000000);
 
         console.log("address(orManager): ", address(orManager));
