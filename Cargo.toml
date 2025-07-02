@@ -8,6 +8,8 @@ authors = ["Filip Lazović <filip@karma3labs.com>"]
 edition = "2021"
 license = "MIT"
 rust-version = "1.85"
+homepage = "https://github.com/openrankprotocol/openrank-avs"
+repository = "https://github.com/openrankprotocol/openrank-avs"
 
 [workspace.dependencies]
 openrank-common = { path = "common", version = "0.1.7" }

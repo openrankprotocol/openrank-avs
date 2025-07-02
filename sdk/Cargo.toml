@@ -1,6 +1,9 @@
 [package]
 name = "openrank-sdk"
 description = "SDK for OpenRank AVS"
+documentation = "https://docs.rs/openrank-sdk"
+homepage.workspace = true
+repository.workspace = true
 rust-version.workspace = true
 license.workspace = true
 version.workspace = true
