@@ -4,5 +4,8 @@ sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
     OpenRankManager,
-    "../contracts/out/OpenRankManager.sol/OpenRankManager.json"
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../contracts/out/OpenRankManager.sol/OpenRankManager.json"
+    )
 );
