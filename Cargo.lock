@@ -3676,11 +3676,13 @@ dependencies = [
  "clap",
  "csv",
  "dotenv",
+ "futures-util",
  "openrank-common",
  "serde",
  "serde_json",
  "sha3",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

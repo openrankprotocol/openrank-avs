@@ -13,6 +13,9 @@ fi
 # Load environment variables from .env file if it exists
 [ -f ".env" ] && source .env
 
+# Override log level
+export RUST_LOG=error
+
 # Override URLs for host machine
 export CHAIN_RPC_URL=http://localhost:8545
 export DA_PROXY_URL=http://localhost:3100
@@ -27,4 +30,6 @@ export REEXECUTION_ENDPOINT_ADDRESS=$(jq -r '.addresses.reexecutionEndpoint.prox
 export IMAGE_ID=$([ -f "./scripts/image_id.txt" ] && cat "./scripts/image_id.txt" || echo "0")
 
 # Run the globally installed openrank-sdk
-openrank-sdk meta-compute-request ./datasets/trust/ ./datasets/seed/
+COMPUTE_ID=$(openrank-sdk meta-compute-request ./datasets/trust/ ./datasets/seed/ --watch)
+echo "$COMPUTE_ID"
+openrank-sdk meta-download-scores $COMPUTE_ID

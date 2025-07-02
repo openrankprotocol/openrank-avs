@@ -16,6 +16,7 @@ use std::{
     fs::File,
     io::{Read, Write},
 };
+use tracing::{debug, info};
 
 /// Helper function to validate trust CSV format
 fn validate_trust_csv(path: &str) -> Result<(), csv::Error> {
@@ -51,7 +52,7 @@ pub async fn upload_trust(client: Client, path: String) -> Result<String, AwsErr
 
     validate_trust_csv(&path).unwrap();
 
-    println!("Uploading trust data: {}", hex::encode(hash.clone()));
+    info!("Uploading trust data: {}", hex::encode(hash.clone()));
 
     client
         .put_object()
@@ -76,7 +77,7 @@ pub async fn upload_seed(client: Client, path: String) -> Result<String, AwsErro
 
     validate_score_csv(&path).unwrap();
 
-    println!("Uploading seed data: {}", hex::encode(hash.clone()));
+    info!("Uploading seed data: {}", hex::encode(hash.clone()));
 
     client
         .put_object()
@@ -133,7 +134,7 @@ pub async fn download_scores(
         .key(format!("scores/{}", scores_id))
         .send()
         .await?;
-    println!("{:?}", res);
+    debug!("{:?}", res);
     while let Some(bytes) = res.body.next().await {
         file.write(&bytes.unwrap()).unwrap();
     }
