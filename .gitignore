@@ -5,6 +5,7 @@ temp.log
 # Compiler files
 contracts/cache/
 contracts/out/
+sdk/contracts/
 
 # Ignores development broadcast logs
 !/broadcast

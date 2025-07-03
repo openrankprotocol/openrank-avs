@@ -9,6 +9,7 @@ license.workspace = true
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+include = ["src/**", "contracts/**"]
 
 [dependencies]
 openrank-common = { workspace = true }
