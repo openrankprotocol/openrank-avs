@@ -153,7 +153,6 @@ async fn main() -> Result<(), AwsError> {
     setup_tracing();
     let cli = Args::parse();
 
-    let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let manager_address =
         std::env::var("OPENRANK_MANAGER_ADDRESS").expect("OPENRANK_MANAGER_ADDRESS must be set.");
@@ -368,6 +367,7 @@ async fn main() -> Result<(), AwsError> {
             println!("Verification result: {}", res);
         }
         Method::UploadTrust { path, certs_path } => {
+            let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
             // Validate CSV format
             validate_trust_csv(&path).unwrap();
             let data = std::fs::read(&path).unwrap(); // Read the contents of the file into a vector of bytes
@@ -379,6 +379,7 @@ async fn main() -> Result<(), AwsError> {
             file.write(&res).unwrap();
         }
         Method::DownloadTrust { path, certs_path } => {
+            let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
             let data = std::fs::read(&certs_path).unwrap();
 
             let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
