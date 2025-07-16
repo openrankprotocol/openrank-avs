@@ -115,7 +115,7 @@ contract OpenRankManager is OpenRankManagerStorage {
         });
         metaChallenges[computeId] = challenge;
 
-        emit MetaChallengeEvent(computeId, subJobId, certificate);
+        emit MetaChallengeEvent(computeId, subJobId, requestIndex);
         return true;
     }
 

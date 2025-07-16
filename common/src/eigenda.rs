@@ -1,6 +1,7 @@
 use alloy::hex;
 use reqwest::Client;
 use thiserror::Error;
+use tracing::info;
 
 const BLOB_SIZE_BYTES: usize = 15777216;
 
@@ -33,9 +34,9 @@ impl EigenDAProxyClient {
     pub async fn health(&self) -> Result<(), EigenDAError> {
         let health_url = format!("{}/health", self.url);
         let resp = self.client.get(&health_url).send().await?;
-        
+
         if resp.status().is_success() {
-            println!("EigenDA proxy health check passed: {}", resp.status());
+            info!("EigenDA proxy health check passed: {}", resp.status());
             Ok(())
         } else {
             Err(EigenDAError::HealthCheckFailed {
@@ -60,7 +61,7 @@ impl EigenDAProxyClient {
             });
         }
 
-        println!("Response Status: {}", res.status());
+        info!("EigenDA Response Status: {}", res.status());
         Ok(res.bytes().await?.to_vec())
     }
 
@@ -101,7 +102,6 @@ impl EigenDAProxyClient {
         let mut certs = Vec::new();
         for chunk in chunks {
             let cert = self.put(chunk.to_vec()).await?;
-            println!("cert len: {}", cert.len());
             certs.push(cert);
         }
         Ok(certs)

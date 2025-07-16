@@ -14,7 +14,8 @@ use serde::{de::DeserializeOwned, Serialize};
 use sha3::{Digest, Keccak256};
 use std::{
     fs::File,
-    io::{Read, Write},
+    io::{BufWriter, Read, Write},
+    path::Path,
 };
 use tracing::{debug, info};
 
@@ -202,4 +203,12 @@ pub async fn verify_local(
     )?;
     let result = runner.verify_scores(mock_domain, Hash::default())?;
     Ok(result)
+}
+
+pub fn save_json_to_file<T: Serialize>(data: T, file: &Path) -> Result<(), std::io::Error> {
+    let file = File::create(file.to_path_buf())?;
+    let mut writer = BufWriter::new(file);
+    serde_json::to_writer(&mut writer, &data)?;
+    writer.flush()?;
+    Ok(())
 }

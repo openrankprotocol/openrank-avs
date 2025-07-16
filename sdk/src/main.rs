@@ -1,15 +1,18 @@
 mod actions;
 mod sol;
 
-use crate::sol::OpenRankManager::MetaComputeResultEvent;
+use crate::actions::save_json_to_file;
+use crate::sol::OpenRankManager::{
+    MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent,
+};
 use actions::{
     compute_local, download_meta, download_scores, upload_meta, upload_seed, upload_trust,
     verify_local,
 };
 use alloy::eips::BlockNumberOrTag;
 use alloy::hex::{FromHex, ToHexExt};
-use alloy::primitives::{Address, FixedBytes, Uint};
-use alloy::providers::{ProviderBuilder, WsConnect};
+use alloy::primitives::{Address, FixedBytes, TxHash, Uint};
+use alloy::providers::{Provider, ProviderBuilder, WsConnect};
 use alloy::rpc::client::RpcClient;
 use alloy::rpc::types::Log;
 use alloy::signers::local::coins_bip39::English;
@@ -21,20 +24,17 @@ use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
 use futures_util::StreamExt;
-use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use serde::{Deserialize, Serialize};
 use sol::OpenRankManager;
 use std::collections::HashMap;
 use std::fs::{read_dir, File};
-use std::io::Write;
-use std::process::exit;
+use std::future;
+use std::path::Path;
 use std::str::FromStr;
-use std::time::Duration;
 use tokio::fs::create_dir_all;
 use tokio::select;
-use tokio::time::timeout;
 use tracing::info;
 
 /// Helper function to parse trust entries from a CSV file
@@ -67,22 +67,56 @@ fn parse_score_entries_from_file(file: File) -> Result<Vec<ScoreEntry>, csv::Err
     Ok(entries)
 }
 
-/// Helper function to validate trust CSV format
-fn validate_trust_csv(path: &str) -> Result<(), csv::Error> {
-    let file = File::open(path).unwrap();
-    let mut reader = csv::Reader::from_reader(file);
-    for result in reader.records() {
-        let record: StringRecord = result?;
-        let (_, _, _): (String, String, f32) = record.deserialize(None)?;
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobMetadata {
+    request_tx_hash: Option<TxHash>,
+    results_tx_hash: Option<TxHash>,
+    challenge_tx_hash: Option<TxHash>,
+}
+
+impl JobMetadata {
+    pub fn new() -> Self {
+        Self {
+            request_tx_hash: None,
+            results_tx_hash: None,
+            challenge_tx_hash: None,
+        }
     }
-    Ok(())
+
+    pub fn set_request_tx_hash(&mut self, request_tx_hash: TxHash) {
+        self.request_tx_hash = Some(request_tx_hash);
+    }
+
+    pub fn set_results_tx_hash(&mut self, results_tx_hash: TxHash) {
+        self.results_tx_hash = Some(results_tx_hash);
+    }
+
+    pub fn set_challenge_tx_hash(&mut self, challenge_tx_hash: TxHash) {
+        self.challenge_tx_hash = Some(challenge_tx_hash);
+    }
+
+    pub fn has_request_tx(&self) -> bool {
+        self.request_tx_hash.is_some()
+    }
+
+    pub fn has_results_tx(&self) -> bool {
+        self.results_tx_hash.is_some()
+    }
+
+    pub fn has_challenge_tx(&self) -> bool {
+        self.challenge_tx_hash.is_some()
+    }
 }
 
 #[derive(Debug, Clone, Subcommand)]
 /// The method to call.
 enum Method {
-    // Meta jobs
     MetaDownloadScores {
+        compute_id: String,
+        #[arg(long)]
+        out_dir: Option<String>,
+    },
+    MetaComputeWatch {
         compute_id: String,
         #[arg(long)]
         out_dir: Option<String>,
@@ -90,8 +124,6 @@ enum Method {
     MetaComputeRequest {
         trust_folder_path: String,
         seed_folder_path: String,
-        #[arg(long)]
-        watch: bool,
     },
     ComputeLocal {
         trust_path: String,
@@ -102,14 +134,6 @@ enum Method {
         trust_path: String,
         seed_path: String,
         scores_path: String,
-    },
-    UploadTrust {
-        path: String,
-        certs_path: String,
-    },
-    DownloadTrust {
-        path: String,
-        certs_path: String,
     },
 }
 
@@ -152,6 +176,9 @@ async fn main() -> Result<(), AwsError> {
     dotenv().ok();
     setup_tracing();
     let cli = Args::parse();
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
 
     let rpc_url = std::env::var("CHAIN_RPC_URL").expect("CHAIN_RPC_URL must be set.");
     let manager_address =
@@ -179,16 +206,11 @@ async fn main() -> Result<(), AwsError> {
     let provider = ProviderBuilder::new()
         .wallet(wallet)
         .on_client(RpcClient::new_http(Url::parse(&rpc_url).unwrap()));
-    let manager_contract = OpenRankManager::new(manager_address, provider);
+    let current_block = provider.get_block_number().await.unwrap();
+    let manager_contract = OpenRankManager::new(manager_address, provider.clone());
 
-    let meta_compute_result_filter = manager_contract_ws
-        .MetaComputeResultEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .unwrap();
-    let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
-
+    // println!("current block: {}", current_block);
+    let starting_block = (current_block - 10).max(0);
     match cli.method {
         Method::MetaDownloadScores {
             compute_id,
@@ -230,10 +252,105 @@ async fn main() -> Result<(), AwsError> {
                 .unwrap();
             }
         }
+        Method::MetaComputeWatch {
+            compute_id,
+            out_dir,
+        } => {
+            let mut job_metadata = JobMetadata::new();
+
+            let request_logs_filter = manager_contract_ws
+                .MetaComputeRequestEvent_filter()
+                .from_block(BlockNumberOrTag::Number(starting_block))
+                .to_block(BlockNumberOrTag::Latest)
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .filter;
+            let results_log_filter = manager_contract_ws
+                .MetaComputeResultEvent_filter()
+                .from_block(BlockNumberOrTag::Number(starting_block))
+                .to_block(BlockNumberOrTag::Latest)
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .filter;
+            let challenge_logs_filter = manager_contract_ws
+                .MetaChallengeEvent_filter()
+                .from_block(BlockNumberOrTag::Number(starting_block))
+                .to_block(BlockNumberOrTag::Latest)
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .filter;
+
+            let request_logs = provider.get_logs(&request_logs_filter).await.unwrap();
+            let results_logs = provider.get_logs(&results_log_filter).await.unwrap();
+            let challenge_logs = provider.get_logs(&challenge_logs_filter).await.unwrap();
+
+            for log in request_logs {
+                job_metadata.set_request_tx_hash(log.transaction_hash.unwrap());
+            }
+            for log in results_logs {
+                job_metadata.set_results_tx_hash(log.transaction_hash.unwrap());
+            }
+            for log in challenge_logs {
+                job_metadata.set_challenge_tx_hash(log.transaction_hash.unwrap());
+            }
+
+            let mut meta_compute_request_stream = manager_contract_ws
+                .MetaComputeRequestEvent_filter()
+                .from_block(BlockNumberOrTag::Number(current_block - 1))
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .watch()
+                .await
+                .unwrap()
+                .into_stream();
+            let mut meta_compute_result_stream = manager_contract_ws
+                .MetaComputeResultEvent_filter()
+                .from_block(BlockNumberOrTag::Number(current_block - 1))
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .watch()
+                .await
+                .unwrap()
+                .into_stream();
+            let mut meta_challenge_stream = manager_contract_ws
+                .MetaChallengeEvent_filter()
+                .from_block(BlockNumberOrTag::Number(current_block - 1))
+                .topic1(Uint::from_str(&compute_id).unwrap())
+                .watch()
+                .await
+                .unwrap()
+                .into_stream();
+
+            if !job_metadata.has_request_tx() {
+                if let Some(res) = meta_compute_request_stream.next().await {
+                    let (meta_request_res, log): (MetaComputeRequestEvent, Log) = res.unwrap();
+                    assert!(meta_request_res.computeId.to_string() == compute_id);
+                    job_metadata.set_request_tx_hash(log.transaction_hash.unwrap());
+                }
+            }
+            if !job_metadata.has_results_tx() {
+                if let Some(res) = meta_compute_result_stream.next().await {
+                    let (meta_result_res, log): (MetaComputeResultEvent, Log) = res.unwrap();
+                    assert!(meta_result_res.computeId.to_string() == compute_id);
+                    job_metadata.set_results_tx_hash(log.transaction_hash.unwrap());
+                }
+            }
+            if !job_metadata.has_challenge_tx() {
+                if let Some(res) = meta_challenge_stream.next().await {
+                    let (meta_challenge_res, log): (MetaChallengeEvent, Log) = res.unwrap();
+                    assert!(meta_challenge_res.computeId.to_string() == compute_id);
+                    job_metadata.set_challenge_tx_hash(log.transaction_hash.unwrap());
+                }
+            }
+
+            if let Some(out_dir) = out_dir {
+                save_json_to_file(
+                    job_metadata,
+                    Path::new(&format!("{}/metadata.json", out_dir)),
+                )
+                .unwrap();
+            } else {
+                print!("{}", serde_json::to_string(&job_metadata).unwrap())
+            }
+        }
         Method::MetaComputeRequest {
             trust_folder_path,
             seed_folder_path,
-            watch,
         } => {
             let trust_paths = read_dir(trust_folder_path).unwrap();
             let mut trust_map = HashMap::new();
@@ -287,29 +404,6 @@ async fn main() -> Result<(), AwsError> {
             info!("Compute ID: {}", compute_id);
 
             println!("{}", compute_id);
-
-            if watch {
-                info!("Listening for compute results...");
-                loop {
-                    select! {
-                        event = timeout(Duration::from_secs(500), meta_compute_result_stream.next()) => {
-                            if let Ok(meta_compute_result_event) = event {
-                                if let Some(res) = meta_compute_result_event {
-                                    let (meta_compute_res, log): (MetaComputeResultEvent, Log) = res.unwrap();
-                                    if meta_compute_res.computeId == compute_id {
-                                        info!("Result Tx Hash: {:?}", log.transaction_hash);
-                                        info!("Compute res hash: {:?}", meta_compute_res.commitment);
-                                        return Ok(())
-                                    }
-                                }
-                            } else {
-                                info!("Watcher timed out. Exiting..");
-                                exit(0);
-                            }
-                        }
-                    }
-                }
-            }
         }
         Method::ComputeLocal {
             trust_path,
@@ -365,28 +459,6 @@ async fn main() -> Result<(), AwsError> {
                 .await
                 .unwrap();
             println!("Verification result: {}", res);
-        }
-        Method::UploadTrust { path, certs_path } => {
-            let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
-            // Validate CSV format
-            validate_trust_csv(&path).unwrap();
-            let data = std::fs::read(&path).unwrap(); // Read the contents of the file into a vector of bytes
-
-            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
-            let res = eigenda_client.put_meta(data).await.unwrap();
-
-            let mut file = File::create(certs_path).unwrap();
-            file.write(&res).unwrap();
-        }
-        Method::DownloadTrust { path, certs_path } => {
-            let eigen_da_url = std::env::var("DA_PROXY_URL").expect("DA_PROXY_URL must be set.");
-            let data = std::fs::read(&certs_path).unwrap();
-
-            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
-
-            let res = eigenda_client.get_meta(data).await.unwrap();
-            let mut file = File::create(path).unwrap();
-            file.write(&res).unwrap();
         }
     };
 

@@ -39,7 +39,7 @@ interface IOpenRankManager {
     event MetaChallengeEvent(
         uint256 indexed computeId,
         uint32 subJobId,
-        bytes certificate
+        uint256 requestIndex
     );
 
     function setImageId(

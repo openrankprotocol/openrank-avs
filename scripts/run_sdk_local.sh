@@ -30,6 +30,8 @@ export REEXECUTION_ENDPOINT_ADDRESS=$(jq -r '.addresses.reexecutionEndpoint.prox
 export IMAGE_ID=$([ -f "./scripts/image_id.txt" ] && cat "./scripts/image_id.txt" || echo "0")
 
 # Run the globally installed openrank-sdk
-COMPUTE_ID=$(openrank-sdk meta-compute-request ./datasets/trust/ ./datasets/seed/ --watch)
+COMPUTE_ID=$(openrank-sdk meta-compute-request ./datasets/trust/ ./datasets/seed/)
 echo "$COMPUTE_ID"
+
+openrank-sdk meta-compute-watch $COMPUTE_ID
 openrank-sdk meta-download-scores $COMPUTE_ID

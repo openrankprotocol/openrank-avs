@@ -11,9 +11,9 @@ abstract contract OpenRankManagerStorage is IOpenRankManager {
     uint64 public CHALLENGE_WINDOW = 60 * 60; // 60 minutes
 
     address owner;
-    address permissionController;
-    address reservationRegistry;
-    address reexecutionEndpoint;
+    address public permissionController;
+    address public reservationRegistry;
+    address public reexecutionEndpoint;
     uint32 imageId;
 
     uint256 public idCounter;
