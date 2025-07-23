@@ -1,6 +1,3 @@
 [submodule "datasets"]
 	path = datasets
 	url = https://github.com/openrankprotocol/datasets
-[submodule "contracts/lib/rxp"]
-	path = contracts/lib/rxp
-	url = https://github.com/Layr-Labs/rxp
