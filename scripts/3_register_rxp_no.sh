@@ -5,7 +5,7 @@ RXP_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../contracts/lib/rxp
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"/../script
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PARENT_DIR="$CURRENT_DIR/.."
-REGISTER_BIN_PATH=/Users/filiplazovic/go/bin/register
+REGISTER_BIN_PATH=$(go env GOPATH)/bin/register
 ENV_FILE="$CURRENT_DIR/../.env"
 
 if [ -f "$ENV_FILE" ]; then

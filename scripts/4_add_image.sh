@@ -12,7 +12,7 @@ DEPLOYMENT_ENV="$1"
 CURRENT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 SCRIPT_DIR=$CURRENT_DIR/../script/"$DEPLOYMENT_ENV"
 RXP_DIR=$CURRENT_DIR/../contracts/lib/rxp
-IMAGESTORE_BIN_PATH=/Users/filiplazovic/go/bin/imagestore
+IMAGESTORE_BIN_PATH=$(go env GOPATH)/bin/imagestore
 
 ENV_FILE="$CURRENT_DIR/../.env"
 if [ -f "$ENV_FILE" ]; then
