@@ -24,17 +24,17 @@ use clap::{Parser, Subcommand};
 use csv::StringRecord;
 use dotenv::dotenv;
 use futures_util::StreamExt;
+use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::logs::setup_tracing;
 use openrank_common::tx::trust::{ScoreEntry, TrustEntry};
 use serde::{Deserialize, Serialize};
 use sol::OpenRankManager;
 use std::collections::HashMap;
 use std::fs::{read_dir, File};
-use std::future;
+use std::io::Write;
 use std::path::Path;
 use std::str::FromStr;
 use tokio::fs::create_dir_all;
-use tokio::select;
 use tracing::info;
 
 /// Helper function to parse trust entries from a CSV file
@@ -134,6 +134,14 @@ enum Method {
         trust_path: String,
         seed_path: String,
         scores_path: String,
+    },
+    UploadTrust {
+        path: String,
+        certs_path: String,
+    },
+    DownloadTrust {
+        path: String,
+        certs_path: String,
     },
 }
 
@@ -459,6 +467,34 @@ async fn main() -> Result<(), AwsError> {
                 .await
                 .unwrap();
             println!("Verification result: {}", res);
+        }
+        Method::UploadTrust { path, certs_path } => {
+            let eigen_da_url = std::env::var("EIGEN_DA_PROXY_URL").unwrap();
+            {
+                let f = File::open(path.clone()).unwrap();
+                let mut rdr = csv::Reader::from_reader(f);
+                for result in rdr.records() {
+                    let record: StringRecord = result.unwrap();
+                    let (_, _, _): (String, String, f32) = record.deserialize(None).unwrap();
+                }
+            }
+            let data = std::fs::read(&path).unwrap(); // Read the contents of the file into a vector of bytes
+
+            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
+            let res = eigenda_client.put_meta(data).await.unwrap();
+
+            let mut file = File::create(certs_path).unwrap();
+            file.write(&res).unwrap();
+        }
+        Method::DownloadTrust { path, certs_path } => {
+            let eigen_da_url = std::env::var("EIGEN_DA_PROXY_URL").unwrap();
+            let data = std::fs::read(&certs_path).unwrap();
+
+            let eigenda_client = EigenDAProxyClient::new(eigen_da_url);
+
+            let res = eigenda_client.put_meta(data).await.unwrap();
+            let mut file = File::create(path).unwrap();
+            file.write(&res).unwrap();
         }
     };
 
