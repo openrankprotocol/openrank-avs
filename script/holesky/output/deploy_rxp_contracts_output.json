@@ -1,75 +1,78 @@
 {
-    "addresses": {
-        "allocationManager": "0xC04619dC03d2252360BD4deA4F7335914D7ffCb7",
-        "allocationManagerImplementation": "0x76162D43e49EE9197B0e9E60E5330697c5eAA45D",
-        "apkRegistry": "0x649fA22FF27739818E972Db7faf2Ae0b5Ab9B0bD",
-        "avsDirectory": "0x39f5d28705bBe1247E3b4D62bd314a1f1EA6Af40",
-        "avsDirectoryImplementation": "0x66D6372De3b7aBC04883ce9989202A0e260A4B4D",
-        "avsPauserReg": "0xdECfAC6c9e1db82322940Df1C8e215b12Ae4994d",
-        "baseStrategyImplementation": "0xda5747dE7f3f5287950ACAF10F547985f4BA862b",
-        "delegationManager": "0xd0a928E266B48F009d6548CA5c3eA81789b28a60",
-        "delegationManagerImplementation": "0xf0299a7f279612cFDce0a9154346d5f488Da800F",
-        "eigenLayerPauserReg": "0x4F16037B8cF8D3e37428e8CA18722dfa949b0524",
-        "eigenLayerProxyAdmin": "0x27ECa7CC897248a7C8d411d38A9c38d3483fb49a",
-        "eigenPodBeacon": "0xC8E206afFa8CE5A422663317D7BBDF82f0B1ea72",
-        "eigenPodImplementation": "0x756F082b115D20187190BD44760f14d8F59Ba0F0",
-        "eigenPodManager": "0x6Bb6b27875E52F26558A9343478Dc620b7F7e331",
-        "eigenPodManagerImplementation": "0xa07b13D12F03E744d84cEF5e991641d90532F51a",
-        "emptyContract": "0x640ef4e9aF429248B91d801260E49687605c7eE6",
-        "ethPOSDepositContract": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
-        "indexRegistry": "0xe1858d087C7bDE0373Bb8F76837c33A02cB32b27",
-        "numStrategiesDeployed": 0,
-        "operatorSet": {
-            "rxpStrategy": "0x367c5a4d0487176a4F2204f42Def7e22CE35A82A",
-            "underlyingToken": "0x6106D646EC710f984d80c47653af0B51AEf5bd51"
-        },
-        "permissionController": "0xAdC6Ef3A62B59c61de98a5E8d7Af4d669f5EDC56",
-        "permissionControllerImplementation": "0xbe367cef2D0C3b671A1f95635ef9Bc0a47Dbe006",
-        "proxyAdmin": "0x833a25B3fB34F544Be94485808C32723215E2eDc",
-        "reexecutionEndpoint": {
-            "implementation": "0x77e9CFC170811d70219411929a4BF1273D15c98c",
-            "proxy": "0x6aD57Ca2DB5c5AdF1Bd5a698a66dd55f9a01EEb9"
-        },
-        "reservationRegistry": {
-            "implementation": "0x5fd292B337C498ad08B331e3F7bAbAD9bcded641",
-            "operatorFeeDistributor": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-            "paymentToken": "0x6106D646EC710f984d80c47653af0B51AEf5bd51",
-            "proxy": "0x4A3e4c09f1b9Fc904DDf7c3286A02c85Cd61D02A",
-            "rxpStrategy": "0x367c5a4d0487176a4F2204f42Def7e22CE35A82A"
-        },
-        "rewardsCoordinator": "0xc1bd24e583Ea5466bdF4e435881D65292C2B4958",
-        "rewardsCoordinatorImplementation": "0x99Bfd1f8201fc6e6d6e525562b5Bd22F4aDBD751",
-        "serviceManager": "0x0A172C992Ee140c052033E81EfF25B4a60C145F8",
-        "slashingRegistryCoordinator": "0xeD79601d39Bec06fce6984A7568454a66b6Bbb93",
-        "socketRegistry": "0x201c1a6eA106E5b2441D1c4E8dE2c858C5a2F452",
-        "stakeRegistry": "0xE84413ff4b3eB5A89762dfb1f0fEEB582364c86F",
-        "strategyBeacon": "0x8AF973fcDb7e9dCBd6843A1Cd29FFA66018315Ac",
-        "strategyBeaconImplementation": "0xda5747dE7f3f5287950ACAF10F547985f4BA862b",
-        "strategyFactory": "0x3CA174a97466297e5B4740b7dC757060D0A27076",
-        "strategyFactoryImplementation": "0xfE91Cc2F3b991697cE5D00c6478E19Aa880A4776",
-        "strategyManager": "0x18aff6021EA2bf3DCff677665c5D36845F5F6B46",
-        "strategyManagerImplementation": "0x5eF4F3BA514a0B370966F3F1ee5485Fd159C4931"
+  "addresses": {
+    "allocationManager": "0xe607db09Fed0d096d113c8901F77534E182fA958",
+    "allocationManagerImplementation": "0xcc42917FF6ea9670818bc5f328Bfa2bD0dF7F61e",
+    "apkRegistry": "0x5D2Dcb3179e9e38ac5602190d1847DD59DB21E00",
+    "avsDirectory": "0xd55c7cbb6ff83FCB642881039B0DB38b4478c4a5",
+    "avsDirectoryImplementation": "0x1e950B036c9607bC153499f898eb179E60EE0473",
+    "avsPauserReg": "0x910d729B731616c0f0FA857fd17B39AeB9B9cAFE",
+    "baseStrategyImplementation": "0x43bcA8763a110E3e345A2d400e744504a4BAdf9a",
+    "delegationManager": "0x5B9167C222122930A7A409f01eeCdCDB641E791d",
+    "delegationManagerImplementation": "0x42361bCbA6422c509512A3d2f3772e7294cD2983",
+    "eigenLayerPauserReg": "0xb1545D8c47CD03f2784Fb51b60155A7D9Fc893FD",
+    "eigenLayerProxyAdmin": "0xCD0ca9D16B9ed924393e77dE0a67372785AC9Ff0",
+    "eigenPodBeacon": "0x2defeC2866bADe601667611b18eedB457f7D1c8C",
+    "eigenPodImplementation": "0x0d5845A89ba9969179B4a6eB156D099DA2d6dec1",
+    "eigenPodManager": "0x3A93f29fE502E1D0F741cba8D474355Ec64FE3a4",
+    "eigenPodManagerImplementation": "0x0AF0fe693ba4AaaceF0300056Dd4d0c3354c11bd",
+    "emptyContract": "0xE97754CecaBD7E3dFe7E56e6Ad7dbaE7Db1e212D",
+    "ethPOSDepositContract": "0x00000000219ab540356cBB839Cbe05303d7705Fa",
+    "indexRegistry": "0xB510140fB58E3239F06534D7dCa59B88D287467D",
+    "numStrategiesDeployed": 0,
+    "operatorSet": {
+      "rxpStrategy": "0xbF7Ba9c749cAE73d43859F3b5fbcf620Ff31d786",
+      "underlyingToken": "0x22AF79056955C6F59De845fCFEC3586cdd5121F2"
     },
-    "chainInfo": {
-        "chainId": 17000,
-        "deploymentBlock": 4214356
+    "permissionController": "0x4b0A6Ff2416D52D839Aa24e8835d02E8cEfAC466",
+    "permissionControllerImplementation": "0x117AD694072b02EAF9bE2c5242d9dd27b04810C7",
+    "proxyAdmin": "0x61a05e5BA9C98E1Fe3D14A4d05060f7Fa440bA6f",
+    "reexecutionEndpoint": {
+      "implementation": "0x0d473E832d0c0B4B8cF8B1701623704022F900A9",
+      "proxy": "0x6c3C92cCD28F8a8029d2DA8A9E1d8402D55BbF0E"
     },
-    "parameters": {
-        "communityMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "epochGenesisBlock": 1,
-        "epochLengthBlocks": 10,
-        "executorMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "initialOwner": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "maxImagesPerReservation": 2,
-        "maxReservations": 30,
-        "operationsMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "pauserMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
-        "prepaidBilledEpochs": 1,
-        "reexecutionFeePerOperator": 1,
-        "reservationBondAmount": 100,
-        "resourceCostPerOperatorPerEpoch": [1, 2],
-        "responseFeePerOperator": 1,
-        "responseWindowBlocks": 1,
-        "timelock": "0x0000000000000000000000000000000000000000"
-    }
+    "reservationRegistry": {
+      "implementation": "0x443aAb441505719575152962184f3F74a8AFdb39",
+      "operatorFeeDistributor": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+      "paymentToken": "0x22AF79056955C6F59De845fCFEC3586cdd5121F2",
+      "proxy": "0xAB8D075A4D55D4F90E70F08A89d21F426c3673E1",
+      "rxpStrategy": "0xbF7Ba9c749cAE73d43859F3b5fbcf620Ff31d786"
+    },
+    "rewardsCoordinator": "0x9fb47122D84d146aBBCC193B60D3eB8BAe97ce75",
+    "rewardsCoordinatorImplementation": "0xc14dF58Ebc837B184050bE82F9099b97Ea28B299",
+    "serviceManager": "0x681e7CDE3580f7823b7cC97863B71f75e8Ac08c8",
+    "slashingRegistryCoordinator": "0x885feA24E5951401ae22245Be294632A28F5D37C",
+    "socketRegistry": "0xe50A9275442c99D8f67c041BE91f903199E4a7e9",
+    "stakeRegistry": "0xc65ed3ACA37e5347F07b98Ee533607DAA8a7680F",
+    "strategyBeacon": "0xB793E3b9deAEa2791895027029309411DFe222e9",
+    "strategyBeaconImplementation": "0x43bcA8763a110E3e345A2d400e744504a4BAdf9a",
+    "strategyFactory": "0xB3A708eaDFA89F21E45011EC696bDb72E88fFB05",
+    "strategyFactoryImplementation": "0xD9943b29C9D1b0ad4B1Aa7A27591f11864590aF1",
+    "strategyManager": "0x1394C564e10D1A8764f9eE0A8E6E9784A191caab",
+    "strategyManagerImplementation": "0xE4bd96b8D2A0818E8653f239f3391CC82C2e02AE"
+  },
+  "chainInfo": {
+    "chainId": 17000,
+    "deploymentBlock": 4253468
+  },
+  "parameters": {
+    "communityMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "epochGenesisBlock": 1,
+    "epochLengthBlocks": 10,
+    "executorMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "initialOwner": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "maxImagesPerReservation": 2,
+    "maxReservations": 30,
+    "operationsMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "pauserMultisig": "0x679A295B982E75C1060BCE840ca8044fFD340EAf",
+    "prepaidBilledEpochs": 1,
+    "reexecutionFeePerOperator": 1,
+    "reservationBondAmount": 100,
+    "resourceCostPerOperatorPerEpoch": [
+      1,
+      2
+    ],
+    "responseFeePerOperator": 1,
+    "responseWindowBlocks": 1,
+    "timelock": "0x0000000000000000000000000000000000000000"
+  }
 }
