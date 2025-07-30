@@ -1,8 +1,10 @@
 use crate::error::Error as NodeError;
 use crate::sol::OpenRankManager::{
-    MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
+    MetaChallengeEvent, MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
 };
-use crate::sol::ReexecutionEndpoint::ReexecutionEndpointInstance;
+use crate::sol::ReexecutionEndpoint::{
+    OperatorResponse, ReexecutionEndpointInstance, ReexecutionRequestCreated,
+};
 use crate::{EigenDaJobDescription, JobDescription, JobResult};
 use alloy::eips::{BlockId, BlockNumberOrTag};
 use alloy::hex::{self, ToHexExt};
@@ -15,7 +17,6 @@ use crate::{
     download_json_metadata_from_s3, download_scores_data_to_file, download_seed_data_to_file,
     download_trust_data_to_file, parse_score_entries_from_file, parse_trust_entries_from_file,
 };
-use futures_util::StreamExt;
 use openrank_common::eigenda::EigenDAProxyClient;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
@@ -26,9 +27,9 @@ use serde::de::DeserializeOwned;
 use sha3::Keccak256;
 use std::collections::HashMap;
 use std::fs::File;
+use std::time::Duration;
 
 use tokio::fs::create_dir_all;
-use tokio::select;
 use tracing::{debug, error, info};
 
 pub async fn download_meta<T: DeserializeOwned>(
@@ -425,209 +426,188 @@ pub async fn run<P: Provider, PW: Provider>(
     s3_client: Client,
     eigenda_client: EigenDAProxyClient,
     bucket_name: &str,
+    block_history: u64,
+    log_pull_seconds: u64,
 ) -> Result<(), NodeError> {
-    let challenge_window = match manager_contract.CHALLENGE_WINDOW().call().await {
-        Ok(window) => window,
-        Err(e) => {
-            error!("Failed to get challenge window: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to get challenge window: {}",
-                e
-            )));
-        }
-    };
-
-    // Meta jobs filters
-    let meta_compute_request_filter = match manager_contract
-        .MetaComputeRequestEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-    {
-        Ok(filter) => filter,
-        Err(e) => {
-            error!("Failed to create meta compute request filter: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to create meta compute request filter: {}",
-                e
-            )));
-        }
-    };
-    let meta_compute_result_filter = match manager_contract
-        .MetaComputeResultEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-    {
-        Ok(filter) => filter,
-        Err(e) => {
-            error!("Failed to create meta compute result filter: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to create meta compute result filter: {}",
-                e
-            )));
-        }
-    };
-    let meta_challenge_filter = match manager_contract
-        .MetaChallengeEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-    {
-        Ok(filter) => filter,
-        Err(e) => {
-            error!("Failed to create meta challenge filter: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to create meta challenge filter: {}",
-                e
-            )));
-        }
-    };
-    let reexecution_request_filter = match rxp_contract
-        .ReexecutionRequestCreated_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-    {
-        Ok(filter) => filter,
-        Err(e) => {
-            error!("Failed to create reexecution request filter: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to create reexecution request filter: {}",
-                e
-            )));
-        }
-    };
-    let operator_response_filter = match rxp_contract
-        .OperatorResponse_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-    {
-        Ok(filter) => filter,
-        Err(e) => {
-            error!("Failed to create operator response filter: {}", e);
-            return Err(NodeError::TxError(format!(
-                "Failed to create operator response filter: {}",
-                e
-            )));
-        }
-    };
-
-    // Meta streams
-    let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
-    let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
-    let mut meta_challenge_stream = meta_challenge_filter.into_stream();
-    let mut reexecution_request_stream = reexecution_request_filter.into_stream();
-    let mut operator_response_stream = operator_response_filter.into_stream();
-
+    let challenge_window = manager_contract.CHALLENGE_WINDOW().call().await.unwrap();
+    let current_block = provider.get_block_number().await.unwrap();
+    let starting_block = current_block - block_history;
     let mut meta_compute_request_map = HashMap::new();
     let mut meta_challanged_jobs_map = HashMap::new();
+    // Meta jobs events
+    let meta_compute_result_filter = manager_contract
+        .MetaComputeResultEvent_filter()
+        .from_block(BlockNumberOrTag::Number(starting_block))
+        .to_block(BlockNumberOrTag::Latest)
+        .filter;
+    let meta_compute_request_filter = manager_contract
+        .MetaComputeRequestEvent_filter()
+        .from_block(BlockNumberOrTag::Number(starting_block))
+        .to_block(BlockNumberOrTag::Latest)
+        .filter;
+    let meta_compute_challenge_filter = manager_contract
+        .MetaChallengeEvent_filter()
+        .from_block(BlockNumberOrTag::Number(starting_block))
+        .to_block(BlockNumberOrTag::Latest)
+        .filter;
 
-    info!("Running the challenger node...");
+    info!("Pulling historical logs (last {} blocks)...", block_history);
 
-    loop {
-        select! {
-            meta_compute_request_event = meta_compute_request_stream.next() => {
-                if let Some(res) = meta_compute_request_event {
-                    match res {
-                        Ok((compute_req, log)) => {
-                            info!(
-                                "MetaComputeRequestEvent: ComputeId({}), JobDescriptionId({:#})",
-                                compute_req.computeId, compute_req.jobDescriptionId
-                            );
-                            debug!("{:?}", log);
+    let result_logs = provider
+        .get_logs(&meta_compute_result_filter)
+        .await
+        .unwrap();
+    let request_logs = provider
+        .get_logs(&meta_compute_request_filter)
+        .await
+        .unwrap();
+    let challenge_logs = provider
+        .get_logs(&meta_compute_challenge_filter)
+        .await
+        .unwrap();
 
-                            meta_compute_request_map.insert(compute_req.computeId, compute_req);
-                        }
-                        Err(e) => {
-                            error!("Error processing meta compute request event: {}", e);
-                        }
-                    }
-                }
-            }
-            meta_compute_result_event = meta_compute_result_stream.next() => {
-                if let Some(res) = meta_compute_result_event {
-                    match res {
-                        Ok((meta_compute_res, log)) => {
-                            if let Err(e) = handle_meta_compute_result(
-                                &manager_contract,
-                                &provider,
-                                s3_client.clone(),
-                                &eigenda_client,
-                                bucket_name.to_string(),
-                                meta_compute_res,
-                                log,
-                                &meta_compute_request_map,
-                                &meta_challanged_jobs_map,
-                                challenge_window._0,
-                            ).await {
-                                error!("Error handling meta compute result: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Error processing meta compute result event: {}", e);
-                        }
-                    }
-                }
-            }
-            meta_challenge_event = meta_challenge_stream.next() => {
-                if let Some(res) = meta_challenge_event {
-                    match res {
-                        Ok((challenge, log)) => {
-                            info!(
-                                "MetaChallengeEvent: ComputeId({:#}) SubJobID({:#})",
-                                challenge.computeId,
-                                challenge.subJobId
-                            );
-                            debug!("{:?}", log);
+    for log in request_logs {
+        let res: Log<MetaComputeRequestEvent> = log.log_decode().unwrap();
+        let compute_req = res.data();
+        meta_compute_request_map.insert(compute_req.computeId, compute_req.clone());
+    }
 
-                            meta_challanged_jobs_map.insert(challenge.computeId, log);
-                        }
-                        Err(e) => {
-                            error!("Error processing meta challenge event: {}", e);
-                        }
-                    }
-                }
-            }
-            reexecution_request_event = reexecution_request_stream.next() => {
-                if let Some(res) = reexecution_request_event {
-                    match res {
-                        Ok((request, log)) => {
-                            info!(
-                                "ReexecutionRequestCreated: requestIndex({:#}) avs({:#}), reservationID({:#})",
-                                request.requestIndex,
-                                request.avs,
-                                request.reservationID,
-                            );
-                            debug!("{:?}", log);
-                        }
-                        Err(e) => {
-                            error!("Error processing reexecution request event: {}", e);
-                        }
-                    }
-                }
-            }
-            operator_response_event = operator_response_stream.next() => {
-                if let Some(res) = operator_response_event {
-                    match res {
-                        Ok((response, log)) => {
-                            info!(
-                                "OperatorResponse: operator({:#}) response({:#})",
-                                response.operator,
-                                response.response
-                            );
-                            debug!("{:?}", log);
-                        }
-                        Err(e) => {
-                            error!("Error processing operator response event: {}", e);
-                        }
-                    }
-                }
-            }
+    for log in challenge_logs {
+        let res: Log<MetaChallengeEvent> = log.log_decode().unwrap();
+        let challenge = res.data();
+        meta_challanged_jobs_map.insert(challenge.computeId, log);
+    }
+
+    for log in result_logs {
+        let res: Log<MetaComputeResultEvent> = log.log_decode().unwrap();
+        let meta_compute_res = res.data();
+        if let Err(e) = handle_meta_compute_result(
+            &manager_contract,
+            &provider,
+            s3_client.clone(),
+            &eigenda_client,
+            bucket_name.to_string(),
+            meta_compute_res.clone(),
+            log,
+            &meta_compute_request_map,
+            &meta_challanged_jobs_map,
+            challenge_window._0,
+        )
+        .await
+        {
+            error!("Error handling meta compute result: {}", e);
         }
     }
-    // This is unreachable due to the infinite loop above, but needed for the Result return type
-    #[allow(unreachable_code)]
-    Ok(())
+
+    info!("Pulling new events...");
+
+    let mut interval = tokio::time::interval(Duration::from_secs(log_pull_seconds));
+    let mut latest_processed_block = current_block;
+
+    loop {
+        interval.tick().await; // Wait for the next tick
+
+        let current_block = provider.get_block_number().await.unwrap();
+
+        let meta_compute_result_filter = manager_contract
+            .MetaComputeResultEvent_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+        let meta_compute_request_filter = manager_contract
+            .MetaComputeRequestEvent_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+        let meta_compute_challenge_filter = manager_contract
+            .MetaChallengeEvent_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+        let reexecution_request_filter = rxp_contract
+            .ReexecutionRequestCreated_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+        let operator_response_filter = rxp_contract
+            .OperatorResponse_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+
+        let result_logs = provider
+            .get_logs(&meta_compute_result_filter)
+            .await
+            .unwrap();
+        let request_logs = provider
+            .get_logs(&meta_compute_request_filter)
+            .await
+            .unwrap();
+        let challenge_logs = provider
+            .get_logs(&meta_compute_challenge_filter)
+            .await
+            .unwrap();
+        let reex_request_logs = provider
+            .get_logs(&reexecution_request_filter)
+            .await
+            .unwrap();
+        let operator_response_logs = provider.get_logs(&operator_response_filter).await.unwrap();
+
+        for log in request_logs {
+            let res: Log<MetaComputeRequestEvent> = log.log_decode().unwrap();
+            let compute_req = res.data();
+            meta_compute_request_map.insert(compute_req.computeId, compute_req.clone());
+        }
+
+        for log in challenge_logs {
+            let res: Log<MetaChallengeEvent> = log.log_decode().unwrap();
+            let challenge = res.data();
+            meta_challanged_jobs_map.insert(challenge.computeId, log);
+        }
+
+        for log in result_logs {
+            let res: Log<MetaComputeResultEvent> = log.log_decode().unwrap();
+            let meta_compute_res = res.data();
+            if let Err(e) = handle_meta_compute_result(
+                &manager_contract,
+                &provider,
+                s3_client.clone(),
+                &eigenda_client,
+                bucket_name.to_string(),
+                meta_compute_res.clone(),
+                log,
+                &meta_compute_request_map,
+                &meta_challanged_jobs_map,
+                challenge_window._0,
+            )
+            .await
+            {
+                error!("Error handling meta compute result: {}", e);
+            }
+        }
+
+        for log in reex_request_logs {
+            let res: Log<ReexecutionRequestCreated> = log.log_decode().unwrap();
+            let request = res.data();
+
+            info!(
+                "ReexecutionRequestCreated: requestIndex({:#}) avs({:#}), reservationID({:#})",
+                request.requestIndex, request.avs, request.reservationID,
+            );
+            debug!("{:?}", log);
+        }
+
+        for log in operator_response_logs {
+            let res: Log<OperatorResponse> = log.log_decode().unwrap();
+            let response = res.data();
+
+            info!(
+                "OperatorResponse: operator({:#}) response({:#})",
+                response.operator, response.response
+            );
+            debug!("{:?}", log);
+        }
+
+        latest_processed_block = current_block;
+    }
 }

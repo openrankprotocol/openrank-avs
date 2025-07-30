@@ -1,5 +1,7 @@
 use crate::error::Error as NodeError;
-use crate::sol::OpenRankManager::{MetaComputeRequestEvent, OpenRankManagerInstance};
+use crate::sol::OpenRankManager::{
+    MetaComputeRequestEvent, MetaComputeResultEvent, OpenRankManagerInstance,
+};
 use crate::{JobDescription, JobResult};
 use alloy::eips::BlockNumberOrTag;
 use alloy::hex::{self, ToHexExt};
@@ -13,7 +15,6 @@ use crate::{
     download_trust_data_to_file, parse_score_entries_from_file, parse_trust_entries_from_file,
     upload_bytes_to_s3, upload_file_to_s3_streaming,
 };
-use futures_util::StreamExt;
 use openrank_common::merkle::fixed::DenseMerkleTree;
 use openrank_common::merkle::Hash;
 use openrank_common::runners::compute_runner::{self, ComputeRunner};
@@ -22,13 +23,12 @@ use openrank_common::Domain;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use sha3::{Digest, Keccak256};
-use std::collections::HashMap;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tokio::fs::create_dir_all;
-use tokio::select;
 use tracing::{debug, error, info};
 
 pub async fn upload_meta<T: Serialize>(
@@ -358,98 +358,114 @@ async fn handle_meta_compute_request<PH: Provider>(
 pub async fn run<PH: Provider, PW: Provider>(
     contract: OpenRankManagerInstance<(), PH>,
     contract_ws: OpenRankManagerInstance<(), PW>,
+    provider: &PH,
     s3_client: Client,
     bucket_name: &str,
+    block_history: u64,
+    log_pull_seconds: u64,
 ) -> Result<(), NodeError> {
-    // Metaed jobs events
-    let meta_compute_request_filter = contract_ws
-        .MetaComputeRequestEvent_filter()
-        .watch()
-        .await
-        .map_err(|e| {
-            error!("Failed to create meta compute request filter: {}", e);
-            NodeError::TxError(format!("Filter creation failed: {}", e))
-        })?;
+    let current_block = provider.get_block_number().await.unwrap();
+    let starting_block = current_block - block_history;
+    // Meta jobs events
     let meta_compute_result_filter = contract_ws
         .MetaComputeResultEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .map_err(|e| {
-            error!("Failed to create meta compute result filter: {}", e);
-            NodeError::TxError(format!("Filter creation failed: {}", e))
-        })?;
-    let meta_challenge_filter = contract_ws
-        .MetaChallengeEvent_filter()
-        .from_block(BlockNumberOrTag::Latest)
-        .watch()
-        .await
-        .map_err(|e| {
-            error!("Failed to create meta challenge filter: {}", e);
-            NodeError::TxError(format!("Filter creation failed: {}", e))
-        })?;
+        .from_block(BlockNumberOrTag::Number(starting_block))
+        .to_block(BlockNumberOrTag::Latest)
+        .filter;
+    let meta_compute_request_filter = contract_ws
+        .MetaComputeRequestEvent_filter()
+        .from_block(BlockNumberOrTag::Number(starting_block))
+        .to_block(BlockNumberOrTag::Latest)
+        .filter;
 
-    // Meta jobs event streams
-    let mut meta_compute_request_stream = meta_compute_request_filter.into_stream();
-    let mut meta_compute_result_stream = meta_compute_result_filter.into_stream();
-    let mut meta_challenge_stream = meta_challenge_filter.into_stream();
+    info!("Pulling historical logs (last {} blocks)...", block_history);
 
-    let mut meta_compute_result_map = HashMap::new();
-    info!("Running the computer node...");
+    let result_logs = provider
+        .get_logs(&meta_compute_result_filter)
+        .await
+        .unwrap();
+    let request_logs = provider
+        .get_logs(&meta_compute_request_filter)
+        .await
+        .unwrap();
+
+    let mut finished_jobs = HashSet::new();
+    for log in result_logs {
+        let res: Log<MetaComputeResultEvent> = log.log_decode().unwrap();
+        finished_jobs.insert(res.data().computeId);
+    }
+
+    for log in request_logs {
+        let res: Log<MetaComputeRequestEvent> = log.log_decode().unwrap();
+        if finished_jobs.contains(&res.data().computeId) {
+            continue;
+        }
+        if let Err(e) = handle_meta_compute_request(
+            &contract,
+            s3_client.clone(),
+            bucket_name.to_string(),
+            res.data().clone(),
+            log,
+        )
+        .await
+        {
+            error!("Error handling meta compute request: {}", e);
+        }
+    }
+
+    info!("Pulling new events...");
+
+    let mut interval = tokio::time::interval(Duration::from_secs(log_pull_seconds));
+    let mut latest_processed_block = current_block;
 
     loop {
-        select! {
-            meta_compute_request_event = meta_compute_request_stream.next() => {
-                if let Some(res) = meta_compute_request_event {
-                    match res {
-                        Ok((compute_req, log)) => {
-                            if let Err(e) = handle_meta_compute_request(
-                                &contract,
-                                s3_client.clone(),
-                                bucket_name.to_string(),
-                                compute_req,
-                                log
-                            ).await {
-                                error!("Error handling meta compute request: {}", e);
-                            }
-                        }
-                        Err(e) => {
-                            error!("Error processing meta compute request event: {}", e);
-                        }
-                    }
-                }
-            }
-            meta_compute_result_event = meta_compute_result_stream.next() => {
-                if let Some(res) = meta_compute_result_event {
-                    match res {
-                        Ok((meta_compute_res, log)) => {
-                            info!(
-                                "MetaComputeResultEvent: ComputeId({}), Commitment({:#}), ResultsId({:#})",
-                                meta_compute_res.computeId, meta_compute_res.commitment, meta_compute_res.resultsId
-                            );
-                            debug!("Log: {:?}", log);
+        interval.tick().await; // Wait for the next tick
 
-                            meta_compute_result_map.insert(meta_compute_res.computeId, log);
-                        }
-                        Err(e) => {
-                            error!("Error processing meta compute result event: {}", e);
-                        }
-                    }
-                }
+        let current_block = provider.get_block_number().await.unwrap();
+
+        let meta_compute_result_filter = contract_ws
+            .MetaComputeResultEvent_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+        let meta_compute_request_filter = contract_ws
+            .MetaComputeRequestEvent_filter()
+            .from_block(BlockNumberOrTag::Number(latest_processed_block))
+            .to_block(BlockNumberOrTag::Number(current_block))
+            .filter;
+
+        let result_logs = provider
+            .get_logs(&meta_compute_result_filter)
+            .await
+            .unwrap();
+        let request_logs = provider
+            .get_logs(&meta_compute_request_filter)
+            .await
+            .unwrap();
+
+        for log in result_logs {
+            let res: Log<MetaComputeResultEvent> = log.log_decode().unwrap();
+            finished_jobs.insert(res.data().computeId);
+        }
+
+        for log in request_logs {
+            let res: Log<MetaComputeRequestEvent> = log.log_decode().unwrap();
+            if finished_jobs.contains(&res.data().computeId) {
+                continue;
             }
-            meta_challenge_event = meta_challenge_stream.next() => {
-                if let Some(res) = meta_challenge_event {
-                    match res {
-                        Ok((meta_challenge, log)) => {
-                            info!("MetaChallengeEvent: ComputeId({:#})", meta_challenge.computeId);
-                            debug!("{:?}", log);
-                        }
-                        Err(e) => {
-                            error!("Error processing meta challenge event: {}", e);
-                        }
-                    }
-                }
+            if let Err(e) = handle_meta_compute_request(
+                &contract,
+                s3_client.clone(),
+                bucket_name.to_string(),
+                res.data().clone(),
+                log,
+            )
+            .await
+            {
+                error!("Error handling meta compute request: {}", e);
             }
         }
+
+        latest_processed_block = current_block;
     }
 }

@@ -17,6 +17,8 @@ use openrank_node::sol::{OpenRankManager, ReexecutionEndpoint};
 use openrank_node::{challenger, computer};
 
 const BUCKET_NAME: &str = "openrank-data-dev";
+const BLOCK_HISTORY: u64 = 100;
+const LOG_PULL_INTERVAL_SECONDS: u64 = 10;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -50,10 +52,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         panic!("Invalid rpc url: {}", rpc_url);
     };
-
-    println!("rpc_url: {}", rpc_url);
-    println!("wss_url: {}", wss_url);
-    println!("eigenda_url: {}", eigenda_url);
 
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
@@ -93,6 +91,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             client,
             eigenda_client,
             BUCKET_NAME,
+            BLOCK_HISTORY,
+            LOG_PULL_INTERVAL_SECONDS,
         )
         .await
         {
@@ -100,8 +100,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     } else {
-        if let Err(e) =
-            computer::run(manager_contract, manager_contract_ws, client, BUCKET_NAME).await
+        if let Err(e) = computer::run(
+            manager_contract,
+            manager_contract_ws,
+            &provider_http,
+            client,
+            BUCKET_NAME,
+            BLOCK_HISTORY,
+            LOG_PULL_INTERVAL_SECONDS,
+        )
+        .await
         {
             eprintln!("Computer failed: {}", e);
             std::process::exit(1);
