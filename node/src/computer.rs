@@ -355,10 +355,9 @@ async fn handle_meta_compute_request<PH: Provider>(
     Ok(())
 }
 
-pub async fn run<PH: Provider, PW: Provider>(
+pub async fn run<PH: Provider>(
     contract: OpenRankManagerInstance<(), PH>,
-    contract_ws: OpenRankManagerInstance<(), PW>,
-    provider: &PH,
+    provider: PH,
     s3_client: Client,
     bucket_name: &str,
     block_history: u64,
@@ -367,12 +366,12 @@ pub async fn run<PH: Provider, PW: Provider>(
     let current_block = provider.get_block_number().await.unwrap();
     let starting_block = current_block - block_history;
     // Meta jobs events
-    let meta_compute_result_filter = contract_ws
+    let meta_compute_result_filter = contract
         .MetaComputeResultEvent_filter()
         .from_block(BlockNumberOrTag::Number(starting_block))
         .to_block(BlockNumberOrTag::Latest)
         .filter;
-    let meta_compute_request_filter = contract_ws
+    let meta_compute_request_filter = contract
         .MetaComputeRequestEvent_filter()
         .from_block(BlockNumberOrTag::Number(starting_block))
         .to_block(BlockNumberOrTag::Latest)
@@ -423,12 +422,12 @@ pub async fn run<PH: Provider, PW: Provider>(
 
         let current_block = provider.get_block_number().await.unwrap();
 
-        let meta_compute_result_filter = contract_ws
+        let meta_compute_result_filter = contract
             .MetaComputeResultEvent_filter()
             .from_block(BlockNumberOrTag::Number(latest_processed_block))
             .to_block(BlockNumberOrTag::Number(current_block))
             .filter;
-        let meta_compute_request_filter = contract_ws
+        let meta_compute_request_filter = contract
             .MetaComputeRequestEvent_filter()
             .from_block(BlockNumberOrTag::Number(latest_processed_block))
             .to_block(BlockNumberOrTag::Number(current_block))

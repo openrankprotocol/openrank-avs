@@ -1,8 +1,6 @@
-use core::panic;
-
 use alloy::hex::FromHex;
 use alloy::primitives::Address;
-use alloy::providers::{ProviderBuilder, WsConnect};
+use alloy::providers::ProviderBuilder;
 use alloy::rpc::client::RpcClient;
 use alloy::signers::local::coins_bip39::English;
 use alloy::signers::local::MnemonicBuilder;
@@ -45,14 +43,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = from_env().region("us-west-2").load().await;
     let client = Client::new(&config);
 
-    let wss_url = if rpc_url.contains("http://") {
-        rpc_url.replace("http://", "ws://")
-    } else if rpc_url.contains("https://") {
-        rpc_url.replace("https://", "wss://")
-    } else {
-        panic!("Invalid rpc url: {}", rpc_url);
-    };
-
     let wallet = MnemonicBuilder::<English>::default()
         .phrase(mnemonic)
         .index(0)
@@ -66,20 +56,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .wallet(wallet.clone())
         .on_client(RpcClient::new_http(rpc_url_parsed));
 
-    let ws = WsConnect::new(wss_url);
-    let provider_wss = ProviderBuilder::new()
-        .on_ws(ws)
-        .await
-        .map_err(|e| format!("Failed to connect to WebSocket: {}", e))?;
-
     let manager_address = Address::from_hex(manager_address)
         .map_err(|e| format!("Failed to parse manager address: {}", e))?;
     let manager_contract = OpenRankManager::new(manager_address, provider_http.clone());
-    let manager_contract_ws = OpenRankManager::new(manager_address, provider_wss.clone());
 
     let rxp_address = Address::from_hex(rxp_address)
         .map_err(|e| format!("Failed to parse RXP address: {}", e))?;
-    let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_wss);
+    let rxp_contract = ReexecutionEndpoint::new(rxp_address, provider_http.clone());
 
     let eigenda_client = EigenDAProxyClient::new(eigenda_url);
 
@@ -87,7 +70,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Err(e) = challenger::run(
             manager_contract,
             rxp_contract,
-            provider_http,
+            provider_http.clone(),
             client,
             eigenda_client,
             BUCKET_NAME,
@@ -102,8 +85,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     } else {
         if let Err(e) = computer::run(
             manager_contract,
-            manager_contract_ws,
-            &provider_http,
+            provider_http,
             client,
             BUCKET_NAME,
             BLOCK_HISTORY,
